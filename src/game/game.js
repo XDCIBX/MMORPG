@@ -74,7 +74,6 @@ export class Game {
   setQuality(q) {
     this.quality = q;
     this.app.setQuality(q);
-    this.world.veg.grassDist = q >= 1 ? 110 : 70;
   }
 
   // ---------- Сохранение ----------
@@ -192,7 +191,7 @@ export class Game {
   }
 
   // ---------- Выбор цели мышью ----------
-  pick(mx, my) {
+  pick(mx, my, tol = 1) {
     const cam = this.camera, W = window.innerWidth, H = window.innerHeight;
     const v = new THREE.Vector3();
     let best = null, bestScore = 1e9;
@@ -205,9 +204,9 @@ export class Game {
       v.set(e.pos.x, headY, e.pos.z).project(cam);
       const hx = (v.x * 0.5 + 0.5) * W, hy = (-v.y * 0.5 + 0.5) * H;
       const h = Math.max(20, fy - hy);
-      const w = Math.max(18, h * 0.35 * (e.radius ? Math.max(1, e.radius * 1.5) : 1));
+      const w = Math.max(18 * tol, h * 0.35 * tol * (e.radius ? Math.max(1, e.radius * 1.5) : 1));
       const cx = (fx + hx) / 2;
-      if (Math.abs(mx - cx) < w && my > hy - 10 && my < fy + 6) {
+      if (Math.abs(mx - cx) < w && my > hy - 10 * tol && my < fy + 6 * tol) {
         const score = Math.abs(mx - cx) / w + d * 0.01;
         if (score < bestScore) { bestScore = score; best = e; }
       }
@@ -219,6 +218,15 @@ export class Game {
   }
 
   onClick(mx, my, button) {
+    if (button === 'tap') {
+      // касание: первое — выбор цели, повторное — атака; NPC — сразу разговор
+      const e = this.pick(mx, my, 1.7);
+      if (!e) return;
+      if (e.isTeleport || e.role) { if (e.interactive) this.interact(e); else this.setTarget(e); return; }
+      if (e === this.target && e.team === 'enemy') { this.player.engaged = true; return; }
+      this.setTarget(e);
+      return;
+    }
     const e = this.pick(mx, my);
     if (!e) { if (button === 0) this.setTarget(null); return; }
     if (e.isTeleport || e.role) {
@@ -228,6 +236,16 @@ export class Game {
     }
     this.setTarget(e);
     if (button === 2 && e.team === 'enemy') this.player.engaged = true;
+  }
+
+  // Кнопка атаки на телефоне
+  touchAttack() {
+    const P = this.player;
+    let t = this.target && this.target.alive && this.target.team === 'enemy' ? this.target : null;
+    if (!t) { t = this.mobs.nearestEnemy(P.pos, 30); if (t) this.setTarget(t); }
+    if (!t) { this.ui.error('Рядом нет врагов'); return; }
+    P.engaged = true;
+    if (P.distTo(t) < 40) P.faceTo(t.pos);
   }
 
   tabTarget() {
@@ -264,6 +282,13 @@ export class Game {
       c.pitch = clamp(c.pitch + inp.dy * 0.0045, -0.25, 1.35);
     }
     if (inp.wheel) c.tdist = clamp(c.tdist * (1 + inp.wheel * 0.0012), 2.5, 28);
+    // на телефоне камера плавно разворачивается за бегущим героем
+    if (inp.joy && inp.joy.active && !inp.dragging && P.moveSpeed > 0) {
+      let d = P.yaw - c.yaw;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      if (Math.abs(d) < 1.9) c.yaw += d * Math.min(1, dt * 1.2);
+    }
     c.dist = lerp(c.dist, c.tdist, Math.min(1, dt * 8));
     // при движении с зажатой ПКМ персонаж поворачивается за камерой (как в MMO)
     if (inp.mouse[2] && P.moveSpeed !== 0) P.yaw = c.yaw;

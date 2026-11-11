@@ -2,7 +2,15 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0a12">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Три Короны">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="icon" href="icon-192.png">
   <title>Три Короны</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -27,7 +35,9 @@
     <div class="menu-buttons">
       <button class="btn" id="btn-continue">Продолжить</button>
       <button class="btn" id="btn-new">Новый герой</button>
+      <button class="btn small" id="btn-fullscreen">⛶ На весь экран</button>
     </div>
+    <div id="ios-tip" class="hidden">Совет: в Safari нажмите «Поделиться» → «На экран „Домой“» — игра откроется на весь экран без адресной строки.</div>
     <div id="save-info" class="subtitle" style="font-size:15px;letter-spacing:1px;margin-top:16px"></div>
   </div>
 
@@ -111,6 +121,20 @@
     </div>
 
     <div id="hud-log" class="frame"></div>
+
+    <!-- Сенсорное управление -->
+    <div id="touch-ui" class="hidden">
+      <div id="joystick"><div id="joy-knob"></div></div>
+      <div id="touch-actions">
+        <div id="touch-skills"></div>
+        <div class="tb big" id="t-attack">⚔</div>
+        <div class="tb" id="t-jump" style="left:-262px;top:6px">⤒</div>
+        <div class="tb gold hidden" id="t-talk" style="left:-262px;top:-60px">💬</div>
+        <div class="tb" id="t-target" style="left:-262px;top:-126px">⟳</div>
+        <div class="tb hp" id="t-hp" style="left:-330px;top:6px">🧪</div>
+        <div class="tb mp" id="t-mp" style="left:-330px;top:-60px">💧</div>
+      </div>
+    </div>
     <div id="notify"></div>
     <div id="errmsg"></div>
     <div id="levelup"></div>
@@ -118,6 +142,7 @@
 
   <div id="windows"></div>
   <div id="tooltip" class="hidden"></div>
+  <div id="rotate" class="hidden"><div class="phone-ico">📱</div><div>Поверните устройство горизонтально</div></div>
   <div id="death" class="hidden">
     <h1>Вы погибли</h1>
     <button class="btn" id="btn-revive">Воскреснуть в ближайшем городе</button>

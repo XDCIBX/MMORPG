@@ -47,7 +47,7 @@ export class World {
     this.shops = SECRET_SHOPS.map(s => Object.assign({ def: s }, { npcPos: buildShop(s, this.terrain, this.collision, root, this.animated) }));
     onProgress('Выращивание лесов…', 0.65); await tick();
     this.veg = new Vegetation(scene, this.terrain, this.collision);
-    if (this.quality < 1) this.veg.grassDist = 70;
+    this.applyQuality(this.quality);
     // кольца телепортов
     this.tpRings = [];
     for (const a of this.animated) {
@@ -58,6 +58,26 @@ export class World {
         const ring2 = ring.clone(); ring2.scale.setScalar(0.75); scene.add(ring2);
         this.tpRings.push([ring, ring2]);
       }
+    }
+  }
+
+  // Настройки качества: дальность травы/деревьев, туман, тени
+  applyQuality(q) {
+    this.quality = q;
+    this.fogMul = q >= 1 ? 1 : q >= 0.6 ? 0.85 : 0.7;
+    if (this.veg) {
+      this.veg.grassDist = q >= 1 ? 110 : q >= 0.6 ? 75 : 50;
+      this.veg.treeDist = q >= 1 ? 480 : q >= 0.6 ? 400 : 320;
+    }
+    if (this.sun) {
+      const sm = q >= 1 ? 2048 : 1024;
+      if (this.sun.shadow.mapSize.x !== sm) {
+        this.sun.shadow.mapSize.set(sm, sm);
+        if (this.sun.shadow.map) { this.sun.shadow.map.dispose(); this.sun.shadow.map = null; }
+      }
+      const S = q >= 0.6 ? 55 : 40;
+      Object.assign(this.sun.shadow.camera, { left: -S, right: S, top: S, bottom: -S });
+      this.sun.shadow.camera.updateProjectionMatrix();
     }
   }
 
@@ -157,8 +177,9 @@ export class World {
     this.fogTarget = this.fogTarget || fog.clone();
     this.fogTarget.lerp(fog, Math.min(1, dt * 0.8));
     this.scene.fog.color.copy(this.fogTarget);
-    this.scene.fog.near = lerp(this.scene.fog.near, fogNear, Math.min(1, dt * 0.5));
-    this.scene.fog.far = lerp(this.scene.fog.far, fogFar, Math.min(1, dt * 0.5));
+    const fm = this.fogMul || 1;
+    this.scene.fog.near = lerp(this.scene.fog.near, fogNear * fm, Math.min(1, dt * 0.5));
+    this.scene.fog.far = lerp(this.scene.fog.far, fogFar * fm, Math.min(1, dt * 0.5));
     this.renderer.toneMappingExposure = lerp(0.62, 0.95, day);
     windowMat.emissiveIntensity = lerp(2.4, 0.25, day);
     // карта окружения для отражений

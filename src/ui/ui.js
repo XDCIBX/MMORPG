@@ -7,6 +7,7 @@ import { CITIES, SECRET_SHOPS, POIS, WORLD_HALF } from '../data/world.js';
 import { BOSSES, SPAWNS, MOB_TYPES } from '../data/mobs.js';
 import { itemIcon, skillIcon } from './icons.js';
 import { fmt } from '../core/util.js';
+import { IS_TOUCH } from '../core/device.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
@@ -24,6 +25,8 @@ export class UI {
     this.markersDirty = true;
     this.audio = null;
     this.muted = false;
+    this.touch = IS_TOUCH;
+    this.tipKey = null;
   }
 
   init() {
@@ -32,10 +35,44 @@ export class UI {
     $('p-name').firstChild.textContent = P.playerName;
     $('p-cls').textContent = P.C.name;
     $('p-portrait').firstChild.textContent = CLASS_ICON[P.cls];
+    if (this.touch) this.initTouchUI();
     this.buildSkillbar();
     document.querySelectorAll('#menubar .mb').forEach(b => b.addEventListener('click', () => this.toggle(b.dataset.w)));
     this.updateTracker();
     $('btn-revive').onclick = () => this.game.respawn();
+  }
+
+  // ---------- Сенсорное управление ----------
+  initTouchUI() {
+    const g = this.game;
+    $('touch-ui').classList.remove('hidden');
+    const bind = (id, fn) => {
+      const b = $(id);
+      b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); b.classList.add('pressed'); fn(); });
+      for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => b.classList.remove('pressed'));
+    };
+    bind('t-attack', () => g.touchAttack());
+    bind('t-jump', () => g.input.tap('Space'));
+    bind('t-talk', () => { const n = g.nearestInteractive(5); if (n) g.interact(n); });
+    bind('t-target', () => g.tabTarget());
+    bind('t-hp', () => g.player.usePotion('hp'));
+    bind('t-mp', () => g.player.usePotion('mp'));
+    // подсказка над предметом скрывается касанием в другом месте
+    document.addEventListener('touchstart', (e) => {
+      if (!e.target.closest || !e.target.closest('.slot, .shop-item')) { this.hideTip(); this.tipKey = null; }
+    }, { passive: true });
+    const fit = () => {
+      const k = Math.min(1, window.innerHeight / 430, window.innerWidth / 820);
+      $('touch-actions').style.transform = `scale(${k.toFixed(3)})`;
+    };
+    window.addEventListener('resize', fit);
+    fit();
+  }
+  unlockAudio() {
+    try {
+      if (!this.audio) this.audio = new (window.AudioContext || window.webkitAudioContext)();
+      if (this.audio.state === 'suspended') this.audio.resume();
+    } catch (e) { /* */ }
   }
 
   // ---------- Звук (синтез WebAudio) ----------
@@ -80,21 +117,42 @@ export class UI {
   // ---------- Панель умений ----------
   buildSkillbar() {
     const P = this.game.player;
-    const bar = $('skillbar');
+    const bar = this.touch ? $('touch-skills') : $('skillbar');
     bar.innerHTML = '';
     this.skillEls = [];
+    // позиции кнопок умений дугой вокруг кнопки атаки (телефон)
+    const arc = [];
+    [180, 150, 120, 90].forEach(a => arc.push([a, 106]));
+    [180, 158, 136, 114, 92].forEach(a => arc.push([a, 170]));
     P.skillBar().forEach((s, i) => {
-      if (i === 6) bar.appendChild(el('div', 'sep'));
+      if (i === 6 && !this.touch) bar.appendChild(el('div', 'sep'));
       const d = el('div', 'sk');
       d.style.backgroundImage = `url(${skillIcon(s)})`;
       d.style.backgroundSize = 'cover';
       d.innerHTML = `<span class="key">${KEYS[i]}</span><span class="glyph">${s.icon}</span><div class="cd"></div><div class="cdt"></div>`;
-      d.addEventListener('click', () => P.trySkill(i));
-      d.addEventListener('mouseenter', (e) => this.showSkillTip(s, e));
-      d.addEventListener('mouseleave', () => this.hideTip());
+      if (this.touch) {
+        const [a, r] = arc[i] || [90, 240];
+        const rad = a * Math.PI / 180;
+        d.style.left = (Math.cos(rad) * r).toFixed(0) + 'px';
+        d.style.top = (-Math.sin(rad) * r).toFixed(0) + 'px';
+        d.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); this.pressSkill(i); P.trySkill(i); });
+      } else {
+        d.addEventListener('click', () => P.trySkill(i));
+        d.addEventListener('mouseenter', (e) => this.showSkillTip(s, e));
+        d.addEventListener('mouseleave', () => this.hideTip());
+      }
       bar.appendChild(d);
       this.skillEls.push({ d, s, cd: d.querySelector('.cd'), cdt: d.querySelector('.cdt') });
     });
+    if (this.touch) {
+      // зелья на телефоне — отдельные кнопки; показываем на них число и откат
+      for (const kind of ['hp', 'mp']) {
+        const d = $('t-' + kind);
+        if (!d.querySelector('.cd')) d.insertAdjacentHTML('beforeend', '<div class="cd"></div><div class="cdt"></div><span class="cnt"></span>');
+        this.skillEls.push({ d, potion: kind, cd: d.querySelector('.cd'), cdt: d.querySelector('.cdt'), cnt: d.querySelector('.cnt') });
+      }
+      return;
+    }
     bar.appendChild(el('div', 'sep'));
     for (const [k, kind, ic] of [['Z', 'hp', '🧪'], ['X', 'mp', '💧']]) {
       const d = el('div', 'sk');
@@ -164,6 +222,10 @@ export class UI {
     this.updateFloaters(dt);
     if (this.windows.map && !this.windows.map.classList.contains('hidden')) { this.mapT = (this.mapT || 0) - dt; if (this.mapT <= 0) { this.mapT = 0.25; this.drawWorldMap(); } }
     if (this.errT > 0) { this.errT -= dt; if (this.errT <= 0) $('errmsg').textContent = ''; }
+    if (this.touch) {
+      this.talkT = (this.talkT || 0) - dt;
+      if (this.talkT <= 0) { this.talkT = 0.25; $('t-talk').classList.toggle('hidden', !g.nearestInteractive(5)); }
+    }
   }
 
   renderBuffs(container, ent) {
@@ -432,6 +494,14 @@ export class UI {
       const pos = opts.pos || { left: (window.innerWidth - (opts.width || 500)) / 2, top: 90 };
       w.style.left = pos.left + 'px'; w.style.top = pos.top + 'px';
     }
+    if (this.touch || window.innerHeight < 600) {
+      // на маленьком экране окно по центру и целиком в пределах экрана
+      requestAnimationFrame(() => {
+        const r = w.getBoundingClientRect();
+        w.style.left = Math.max(6, Math.min(window.innerWidth - r.width - 6, (window.innerWidth - r.width) / 2)) + 'px';
+        w.style.top = Math.max(4, Math.min(window.innerHeight - r.height - 4, 6)) + 'px';
+      });
+    }
     w.querySelector('h3').textContent = title;
     w.classList.remove('hidden');
     w.style.zIndex = 20 + (++this.z || (this.z = 1));
@@ -453,9 +523,9 @@ export class UI {
   makeDraggable(w) {
     const h = w.querySelector('.wh');
     let sx, sy, ox, oy, drag = false;
-    h.addEventListener('mousedown', (e) => { if (e.target.classList.contains('x')) return; drag = true; sx = e.clientX; sy = e.clientY; ox = w.offsetLeft; oy = w.offsetTop; w.style.zIndex = 20 + (++this.z); e.stopPropagation(); });
-    window.addEventListener('mousemove', (e) => { if (!drag) return; w.style.left = (ox + e.clientX - sx) + 'px'; w.style.top = Math.max(0, oy + e.clientY - sy) + 'px'; });
-    window.addEventListener('mouseup', () => { drag = false; });
+    h.addEventListener('pointerdown', (e) => { if (e.target.classList.contains('x')) return; drag = true; sx = e.clientX; sy = e.clientY; ox = w.offsetLeft; oy = w.offsetTop; w.style.zIndex = 20 + (++this.z); e.stopPropagation(); });
+    window.addEventListener('pointermove', (e) => { if (!drag) return; w.style.left = (ox + e.clientX - sx) + 'px'; w.style.top = Math.max(0, oy + e.clientY - sy) + 'px'; });
+    window.addEventListener('pointerup', () => { drag = false; });
     w.addEventListener('mousedown', (e) => e.stopPropagation());
     w.addEventListener('contextmenu', (e) => e.preventDefault());
     w.addEventListener('wheel', (e) => e.stopPropagation());
@@ -470,7 +540,7 @@ export class UI {
     let x = e.clientX + 18, y = e.clientY + 12;
     if (x + r.width > window.innerWidth) x = e.clientX - r.width - 12;
     if (y + r.height > window.innerHeight) y = window.innerHeight - r.height - 6;
-    t.style.left = x + 'px'; t.style.top = y + 'px';
+    t.style.left = Math.max(4, x) + 'px'; t.style.top = Math.max(4, y) + 'px';
   }
   hideTip() { $('tooltip').classList.add('hidden'); }
   itemTip(it, ctx = '') {
@@ -508,7 +578,7 @@ export class UI {
     else h += `<div class="tt">Хлам — можно продать торговцу</div>`;
     if (ctx === 'shop') h += `<div class="hint">Цена: <span class="gold">${fmt(it.price)} з.</span> · ЛКМ — купить</div>`;
     else if (it.sell) h += `<div class="hint">Цена продажи: <span class="gold">${fmt(it.sell * (it.count || 1))} з.</span></div>`;
-    if (ctx === 'bag') h += `<div class="hint">ЛКМ — ${it.type === 'gear' ? 'надеть' : it.type === 'potion' ? 'использовать' : '—'}${this.shopNpc ? ' · ПКМ — продать' : ''}</div>`;
+    if (ctx === 'bag') h += `<div class="hint">${this.touch ? 'Касание' : 'ЛКМ'} — ${it.type === 'gear' ? 'надеть' : it.type === 'potion' ? 'использовать' : '—'}${this.shopNpc ? (this.touch ? ' · долгое нажатие — продать' : ' · ПКМ — продать') : ''}</div>`;
     if (ctx === 'equipped') h += `<div class="hint">ЛКМ — снять</div>`;
     return h;
   }
@@ -533,9 +603,27 @@ export class UI {
       s.addEventListener('mousemove', (e) => this.showTip(this.itemTip(it, ctx), e));
       s.addEventListener('mouseleave', () => this.hideTip());
     } else if (placeholder) s.appendChild(el('div', 'ph', placeholder));
-    s.addEventListener('click', () => { this.hideTip(); onClick && onClick(); });
-    s.addEventListener('contextmenu', (e) => { e.preventDefault(); this.hideTip(); (onRight || onClick) && (onRight || onClick)(); });
+    let longFired = false, lp = null;
+    if (this.touch && it) {
+      // долгое нажатие = ПКМ (например, продать)
+      s.addEventListener('touchstart', () => { longFired = false; clearTimeout(lp); lp = setTimeout(() => { longFired = true; this.hideTip(); this.tipKey = null; (onRight || onClick) && (onRight || onClick)(); }, 550); }, { passive: true });
+      for (const ev of ['touchend', 'touchmove', 'touchcancel']) s.addEventListener(ev, () => clearTimeout(lp), { passive: true });
+    }
+    s.addEventListener('click', () => {
+      if (longFired) { longFired = false; return; }
+      if (this.touch && it && !this.previewTap(s, it.id + ctx, () => this.itemTip(it, ctx))) return;
+      this.hideTip(); onClick && onClick();
+    });
+    s.addEventListener('contextmenu', (e) => { e.preventDefault(); if (this.touch) return; this.hideTip(); (onRight || onClick) && (onRight || onClick)(); });
     return s;
+  }
+  // На телефоне первое касание показывает подсказку, второе — выполняет действие
+  previewTap(elm, key, htmlFn) {
+    if (this.tipKey === key) { this.tipKey = null; return true; }
+    this.tipKey = key;
+    const r = elm.getBoundingClientRect();
+    this.showTip(htmlFn() + '<div class="hint">Нажмите ещё раз, чтобы применить</div>', { clientX: r.right, clientY: r.top });
+    return false;
   }
 
   // Персонаж
@@ -699,7 +787,7 @@ export class UI {
     const b = this.openWindow('map', 'Карта мира', { width: 760, pos: { left: (window.innerWidth - 760) / 2, top: 40 } });
     if (!b.querySelector('canvas')) {
       const c = el('canvas'); c.id = 'map-canvas';
-      const sz = Math.min(720, window.innerHeight - 170);
+      const sz = Math.max(200, Math.min(720, window.innerHeight - (this.touch ? 80 : 170), window.innerWidth - 40));
       c.width = c.height = 1024; c.style.width = c.style.height = sz + 'px';
       b.appendChild(c);
       b.appendChild(el('div', 'map-legend', '<span>⬤ <span style="color:#e8c46a">Город</span></span><span>☠ Босс</span><span>◆ <span style="color:#d8a0ff">Тайная лавка</span></span><span>◯ <span style="color:#ffd23a">Цель задания</span></span><span>Подписи — монстры и их уровни</span>'));
@@ -777,7 +865,18 @@ export class UI {
   openHelp() {
     const b = this.openWindow('help', 'Меню', { width: 560 });
     const g = this.game;
-    b.innerHTML = `<div class="help-grid">
+    const touchHelp = `<div class="help-grid">
+      <kbd>Левая часть экрана</kbd><span>Джойстик — движение (появляется под пальцем)</span>
+      <kbd>Свайп справа</kbd><span>Поворот камеры; два пальца — приближение</span>
+      <kbd>Касание врага</kbd><span>Выбрать цель, повторное касание — атаковать</span>
+      <kbd>Касание NPC</kbd><span>Поговорить (или кнопка 💬 рядом с ним)</span>
+      <kbd>⚔</kbd><span>Атака: ближайший враг или выбранная цель</span>
+      <kbd>Кнопки по дуге</kbd><span>Умения: внутренняя дуга — 1–4, внешняя — 5–9 (7–9 — умения пути)</span>
+      <kbd>⤒ · ⟳ · 🧪 · 💧</kbd><span>Прыжок · следующая цель · зелье здоровья · зелье маны</span>
+      <kbd>Предметы</kbd><span>Касание — описание, повторное — надеть/купить, долгое — продать</span>
+    </div>`;
+    b.innerHTML = this.touch ? touchHelp : '';
+    b.innerHTML += `<div class="help-grid" ${this.touch ? 'style="display:none"' : ''}>
       <kbd>W A S D</kbd><span>Движение (Q / E — шаг в сторону)</span>
       <kbd>Мышь (ЛКМ/ПКМ зажать)</kbd><span>Вращение камеры; обе кнопки — бег вперёд</span>
       <kbd>Колесо</kbd><span>Приближение камеры</span>
@@ -925,6 +1024,8 @@ export class UI {
       row.addEventListener('mousemove', (e) => this.showTip(this.itemTip(it, 'shop'), e));
       row.addEventListener('mouseleave', () => this.hideTip());
       row.onclick = () => {
+        if (this.touch && !this.previewTap(row, 'shop' + it.id, () => this.itemTip(it, 'shop'))) return;
+        this.hideTip();
         if (P.gold < it.price) { this.error('Недостаточно золота'); return; }
         const copy = it.type === 'potion' ? Object.assign({}, it, { id: it.id + Math.random(), count: 1 }) : it;
         if (!P.addItem(copy)) { this.error('Сумка переполнена'); return; }
@@ -938,7 +1039,7 @@ export class UI {
       list.appendChild(row);
     });
     b.appendChild(list);
-    b.appendChild(el('div', '', `<div style="margin-top:10px;color:var(--muted);font-size:13px">ПКМ по предмету в сумке — продать. Ваше золото: <span class="gold">${fmt(P.gold)}</span></div>`));
+    b.appendChild(el('div', '', `<div style="margin-top:10px;color:var(--muted);font-size:13px">${this.touch ? 'Долгое нажатие на предмет в сумке' : 'ПКМ по предмету в сумке'} — продать. Ваше золото: <span class="gold">${fmt(P.gold)}</span></div>`));
     if (!this.isOpen('bag')) this.openBag(); else this.renderBag();
   }
 }

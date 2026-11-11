@@ -319,6 +319,10 @@ export class Player extends Entity {
     if (inp.key('KeyD') || inp.key('ArrowRight')) mx += 1;
     if (inp.key('KeyQ')) mx -= 1;
     if (inp.key('KeyE')) mx += 1;
+    // виртуальный джойстик (телефон): свободное направление, без шага назад
+    const joy = inp.joy && inp.joy.active && Math.hypot(inp.joy.x, inp.joy.y) > 0.18;
+    let joyMag = 1;
+    if (joy) { mx += inp.joy.x; mz += inp.joy.y; joyMag = Math.min(1, Math.hypot(inp.joy.x, inp.joy.y) * 1.25); }
     const camYaw = g.cam.yaw;
     const fx = Math.sin(camYaw), fz = Math.cos(camYaw);
     const rx = -fz, rz = fx;
@@ -331,8 +335,8 @@ export class Player extends Entity {
     if (len > 0.01 && canMove) {
       dx /= len; dz /= len;
       if (this.casting) { this.casting = null; g.ui.error('Заклинание прервано'); }
-      speed = this.speed * (this.slowT > 0 ? 0.6 : 1) * (swimming ? 0.65 : 1) * (mz < 0 && mx === 0 ? 0.6 : 1);
-      const back = mz < 0 && mx === 0;
+      const back = !joy && mz < 0 && mx === 0;
+      speed = this.speed * (this.slowT > 0 ? 0.6 : 1) * (swimming ? 0.65 : 1) * (back ? 0.6 : 1) * (joy ? (joyMag < 0.6 ? 0.45 : 1) : 1);
       const targetYaw = back ? Math.atan2(-dx, -dz) : Math.atan2(dx, dz);
       this.yaw = angleLerp(this.yaw, targetYaw, Math.min(1, dt * 12));
       const nx = this.pos.x + dx * speed * dt, nz = this.pos.z + dz * speed * dt;

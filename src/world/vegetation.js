@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32, Noise, smoothstep } from '../core/util.js';
 import { WORLD_HALF, CITIES, SECRET_SHOPS, POIS, BIOMES } from '../data/world.js';
+import { IS_PHONE } from '../core/device.js';
 
 export const windUniforms = { uTime: { value: 0 } };
 
@@ -226,6 +227,8 @@ export class Vegetation {
     this.placeAll();
     this.buildGrassAssets();
     this.grassDist = 110;
+    this.treeDist = 480;
+    this.grassDensity = IS_PHONE ? 0.4 : 0.65;
   }
 
   buildVariants() {
@@ -271,7 +274,7 @@ export class Vegetation {
     const up = new THREE.Vector3(0, 1, 0);
     const clusterN = new Noise(555);
     // Деревья
-    const step = 7;
+    const step = IS_PHONE ? 8.5 : 7;
     for (let z = -WORLD_HALF + 20; z < WORLD_HALF - 20; z += step) {
       for (let x = -WORLD_HALF + 20; x < WORLD_HALF - 20; x += step) {
         const px = x + (rnd() - 0.5) * step * 0.9, pz = z + (rnd() - 0.5) * step * 0.9;
@@ -425,7 +428,7 @@ export class Vegetation {
     const cx = x0 + GCH / 2, cz = z0 + GCH / 2;
     const B = T.biomeAt(cx, cz);
     const g = new THREE.Group();
-    const density = 0.65;
+    const density = this.grassDensity;
     const count = Math.floor(GCH * GCH * density);
     const mats = [], cols = [];
     const fl = [], flc = [];
@@ -485,7 +488,7 @@ export class Vegetation {
     // видимость чанков деревьев
     for (const ch of this.chunks) {
       const d = Math.hypot(ch.userData.cx - camPos.x, ch.userData.cz - camPos.z);
-      ch.visible = d < 480;
+      ch.visible = d < this.treeDist;
     }
     // ленивые чанки травы
     const nG = Math.ceil((WORLD_HALF * 2) / GCH);

@@ -4,7 +4,9 @@ import { Noise, clamp, lerp, smoothstep, distToSegment } from '../core/util.js';
 import { terrainDetail, waterNormal } from '../core/textures.js';
 import { WORLD_HALF, CITIES, ROADS, BIOMES, BIOME_LIST, BIOME_SEEDS, LAKES, LAVA_POOLS, SECRET_SHOPS, POIS } from '../data/world.js';
 
-const N = 400; // сегментов по стороне
+import { IS_PHONE } from '../core/device.js';
+
+const N = IS_PHONE ? 320 : 400; // сегментов по стороне (на телефонах меньше)
 const SIZE = WORLD_HALF * 2;
 const CELL = SIZE / N;
 

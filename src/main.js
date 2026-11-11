@@ -16,57 +16,19 @@ import { animateGear } from './chars/gear.js';
 import { skillIcon } from './ui/icons.js';
 import { CITIES } from './data/world.js';
 import { BOSSES } from './data/mobs.js';
+import { Input } from './core/input.js';
+import { IS_TOUCH, IS_PHONE } from './core/device.js';
 
 const $ = (id) => document.getElementById(id);
-
-// ---------- Ввод ----------
-class Input {
-  constructor(canvas) {
-    this.keys = new Set();
-    this.down = new Set();
-    this.mouse = [false, false, false];
-    this.dx = 0; this.dy = 0; this.wheel = 0;
-    this.dragging = false;
-    this.onClick = null;
-    let sx = 0, sy = 0, moved = 0;
-    window.addEventListener('keydown', (e) => {
-      if (e.target.tagName === 'INPUT') return;
-      if (['Tab', 'Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
-      if (!this.keys.has(e.code)) this.down.add(e.code);
-      this.keys.add(e.code);
-    });
-    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    window.addEventListener('blur', () => { this.keys.clear(); this.mouse = [false, false, false]; this.dragging = false; });
-    canvas.addEventListener('mousedown', (e) => {
-      this.mouse[e.button] = true; sx = e.clientX; sy = e.clientY; moved = 0;
-      if (e.button === 0 || e.button === 2) { this.dragging = true; }
-    });
-    window.addEventListener('mousemove', (e) => {
-      if (this.dragging) { this.dx += e.movementX; this.dy += e.movementY; moved += Math.abs(e.movementX) + Math.abs(e.movementY); }
-    });
-    window.addEventListener('mouseup', (e) => {
-      const wasDown = this.mouse[e.button];
-      this.mouse[e.button] = false;
-      if (!this.mouse[0] && !this.mouse[2]) this.dragging = false;
-      if (wasDown && moved < 6 && e.target === canvas && this.onClick) this.onClick(e.clientX, e.clientY, e.button);
-    });
-    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-    canvas.addEventListener('wheel', (e) => { this.wheel += e.deltaY; e.preventDefault(); }, { passive: false });
-    void sx; void sy;
-  }
-  key(c) { return this.keys.has(c); }
-  pressed(c) { return this.down.has(c); }
-  get bothMouse() { return this.mouse[0] && this.mouse[2]; }
-  endFrame() { this.down.clear(); this.dx = 0; this.dy = 0; this.wheel = 0; }
-}
 
 class App {
   constructor() {
     this.canvas = $('game');
-    this.quality = (navigator.hardwareConcurrency || 4) >= 6 ? 1 : 0.6;
+    if (IS_TOUCH) document.body.classList.add('touch');
+    this.quality = IS_PHONE ? 0.5 : IS_TOUCH ? 0.6 : (navigator.hardwareConcurrency || 4) >= 6 ? 1 : 0.6;
     try { const q = localStorage.getItem('three_crowns_quality'); if (q) this.quality = +q; } catch (e) { /* */ }
     const r = this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: false, powerPreference: 'high-performance' });
-    r.setPixelRatio(Math.min(window.devicePixelRatio, this.quality >= 1 ? 1.5 : 1));
+    r.setPixelRatio(this.pixelRatioFor(this.quality));
     r.setSize(window.innerWidth, window.innerHeight);
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -79,26 +41,68 @@ class App {
     this.input = new Input(this.canvas);
     this.input.onClick = (x, y, b) => { if (this.game && this.game.started) this.game.onClick(x, y, b); };
     // постобработка
-    const rt = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: THREE.HalfFloatType, samples: 4 });
+    // HDR-буфер, если устройство умеет рисовать в float-текстуры (на части телефонов — нет)
+    const hdr = r.extensions.has('EXT_color_buffer_float') || r.extensions.has('EXT_color_buffer_half_float');
+    const rt = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: hdr ? THREE.HalfFloatType : THREE.UnsignedByteType, samples: IS_TOUCH ? 2 : 4 });
     this.composer = new EffectComposer(r, rt);
     this.renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(this.renderPass);
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.45, 0.5, 1.6);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), hdr ? 0.45 : 0.3, 0.5, hdr ? 1.6 : 0.92);
+    this.bloom.enabled = this.quality >= 0.6;
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
     this.composer.setPixelRatio(r.getPixelRatio());
     window.addEventListener('resize', () => this.resize());
+    window.addEventListener('orientationchange', () => setTimeout(() => this.resize(), 300));
+    // звук на мобильных включается только после касания
+    const unlock = () => { try { if (this.game && this.game.ui) this.game.ui.unlockAudio(); } catch (e) { /* */ } };
+    window.addEventListener('touchend', unlock, { passive: true });
+    window.addEventListener('click', unlock);
+    this.setupMobileShell();
     this.clock = new THREE.Clock();
     this.mode = 'loading';
+  }
+
+  pixelRatioFor(q) {
+    const dpr = window.devicePixelRatio || 1;
+    if (q >= 1) return Math.min(dpr, 1.5);
+    if (q >= 0.6) return Math.min(dpr, IS_TOUCH ? 1.5 : 1);
+    return Math.min(dpr, IS_TOUCH ? 1.25 : 1);
   }
 
   setQuality(q) {
     this.quality = q;
     try { localStorage.setItem('three_crowns_quality', q); } catch (e) { /* */ }
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, q >= 1 ? 1.5 : 1));
+    this.renderer.setPixelRatio(this.pixelRatioFor(q));
     this.composer.setPixelRatio(this.renderer.getPixelRatio());
     this.bloom.enabled = q >= 0.6;
+    if (this.world) this.world.applyQuality(q);
     this.resize();
+  }
+
+  // Полноэкранный режим, подсказка о повороте экрана
+  setupMobileShell() {
+    const fs = $('btn-fullscreen');
+    const canFs = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+    if (fs) {
+      if (!IS_TOUCH || !canFs) fs.classList.add('hidden');
+      fs.onclick = () => this.enterFullscreen();
+    }
+    if (IS_TOUCH && /iPhone|iPod/.test(navigator.userAgent) && !navigator.standalone) $('ios-tip') && $('ios-tip').classList.remove('hidden');
+    const check = () => {
+      const portrait = IS_TOUCH && window.innerHeight > window.innerWidth;
+      $('rotate').classList.toggle('hidden', !portrait);
+    };
+    window.addEventListener('resize', check);
+    check();
+  }
+  enterFullscreen() {
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!req) return;
+    Promise.resolve(req.call(el)).then(() => {
+      try { screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {}); } catch (e) { /* */ }
+    }).catch(() => {});
   }
 
   resize() {
@@ -242,6 +246,8 @@ class App {
 
   startGame(data, save) {
     this.mode = 'game';
+    if (IS_TOUCH && !document.fullscreenElement) this.enterFullscreen();
+    this.input.joyEnabled = true;
     if (this.menuModel) { this.menuModel.root.removeFromParent(); this.menuModel = null; }
     this.renderPass.scene = this.scene;
     this.renderPass.camera = this.camera;
