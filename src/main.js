@@ -15,6 +15,7 @@ import { setMaxAnisotropy, runeCircle } from './core/textures.js';
 import { CLASSES, CLASS_LIST } from './data/classes.js';
 import { showcaseKit } from './data/items.js';
 import { buildPlayerModel } from './game/player.js';
+import { loadHero, heroKey } from './chars/hero/model.js';
 import { animateGear } from './chars/gear.js';
 import { skillIcon } from './ui/icons.js';
 import { CITIES } from './data/world.js';
@@ -172,6 +173,8 @@ class App {
     this.save = save;
     $('btn-continue').disabled = !save;
     if (save) $('save-info').textContent = `${save.player.name} — ${CLASSES[save.player.cls].name}, ${save.player.level} уровень`;
+    // заранее подгрузить детальную модель героя из сохранения
+    if (save && save.player && save.player.cls) loadHero(heroKey(save.player.cls, !!save.player.female)).catch(() => {});
     $('btn-continue').onclick = () => { $('screen-menu').classList.add('hidden'); this.startGame(save.player, save); };
     $('btn-new').textContent = 'Новый герой';
     let armed = false;
@@ -266,6 +269,10 @@ class App {
     if (this.menuModel) this.menuModel.root.removeFromParent();
     const kit = showcaseKit(this.sel, this.sel === 'dwarf' ? 38 : 34, 3);
     this.menuModel = buildPlayerModel(this.sel, this.female, kit);
+    if (!this.menuModel.isHero) {
+      const want = this.sel + this.female;
+      loadHero(heroKey(this.sel, this.female)).then(() => { if (this.mode === 'create' && this.sel + this.female === want) this.showCreate(); }).catch(() => {});
+    }
     this.menuModel.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
     this.menuModel.root.rotation.y = this.menuYaw || 0.4;
     this.menuScene.add(this.menuModel.root);
@@ -325,5 +332,6 @@ const app = new App();
 window.__app = app;
 window.__bosses = BOSSES;
 window.__horse = { buildMount };
+window.__heroMod = { loadHero, heroKey };
 app.loop();
 app.load().catch(e => { console.error(e); $('load-text').textContent = 'Ошибка загрузки: ' + e.message; });

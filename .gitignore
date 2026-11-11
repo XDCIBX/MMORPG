@@ -1,2 +1,4 @@
 node_modules/
 *.log
+tools/viewer/viewer.bundle.js
+tools/dbg/

@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { Entity } from './entity.js';
 import { Humanoid } from '../chars/humanoid.js';
+import { HeroModel, heroKey, heroReady, loadHero, getHero } from '../chars/hero/model.js';
 import { equipVisual, animateGear, WEAPON_ANIM } from '../chars/gear.js';
 import { CLASSES, BRANCH_LEVEL, xpNeeded } from '../data/classes.js';
 import { SLOTS, starterKit, makePotion } from '../data/items.js';
@@ -17,7 +18,10 @@ export function buildPlayerModel(cls, female, equipment, branch = null) {
   const C = CLASSES[cls];
   const look = JSON.parse(JSON.stringify(female ? C.look.female : C.look.male));
   look.base = { shirt: '#6a5a48', pants: '#4a3a2a', boots: '#3a2a1a' };
-  const h = new Humanoid(look);
+  const key = heroKey(cls, female);
+  let h;
+  if (heroReady(key)) h = new HeroModel(look, getHero(key));
+  else { h = new Humanoid(look); loadHero(key).catch(e => console.warn(e)); }
   for (const s of ['head', 'shoulders', 'chest', 'hands', 'legs', 'feet', 'weapon', 'offhand']) {
     const it = equipment[s];
     equipVisual(h, s, it ? displayItem(it, cls, branch) : null);
@@ -67,6 +71,8 @@ export class Player extends Entity {
     this.radius = 0.45;
     this.moveSpeed = 0;
     this.buildModel();
+    // детальная модель подгружается отдельно — подменить, когда будет готова
+    if (!this.model.isHero) loadHero(heroKey(this.cls, this.female)).then(() => { if (!this.model.isHero) this.buildModel(); }).catch(e => console.warn('hero', e));
     this.trail = new WeaponTrail(game.scene, this.trailColor());
     this.recalc();
     this.hp = data.hp ? Math.min(data.hp, this.maxHp) : this.maxHp;

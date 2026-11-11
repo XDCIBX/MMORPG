@@ -50,6 +50,14 @@ export class Sculpt {
     return p;
   }
 
+  // произвольная функция расстояния в рамке bb (мировые координаты)
+  custom(fn, bb, { bone, k = 0.01, sub = false, tag = null } = {}) {
+    const p = { t: 2, fn, k, sub, tag, bone: bone ? this.boneIdx.get(bone) : -1, floor: null };
+    this._bbox(p, bb);
+    this.prims.push(p);
+    return p;
+  }
+
   _bbox(p, bb) {
     const m = p.k + 0.03;
     p.bb = [bb[0] - m, bb[1] - m, bb[2] - m, bb[3] + m, bb[4] + m, bb[5] + m];
@@ -57,6 +65,7 @@ export class Sculpt {
 
   // расстояние до одного примитива
   static dist(p, x, y, z) {
+    if (p.t === 2) return p.fn(x, y, z);
     if (p.t === 0) {
       let lx = x - p.cx, ly = y - p.cy, lz = z - p.cz;
       if (p.rot) {

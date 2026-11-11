@@ -1,6 +1,7 @@
 // Визуализация снаряжения на гуманоиде: доспехи по слотам и оружие.
 import * as THREE from 'three';
 import { limbGeo, latheGeo, ellipsoid } from './humanoid.js';
+import { bakedWeapon } from './hero/model.js';
 import { metalMat, leatherMat, clothMat, gemMat, woodMat, boneMat, basicMat, glowMat, chainMat } from './materials.js';
 
 function add(h, list, geo, mat, parent, x = 0, y = 0, z = 0) {
@@ -359,6 +360,8 @@ function extrude(shape, depth, bevel = 0.004) {
 }
 
 export function buildWeapon(type, v) {
+  const baked = bakedWeapon(type, v);
+  if (baked) { addMagic(baked, type, v); return baked; }
   const g = new THREE.Group();
   const L = [];
   const fake = { };
@@ -531,6 +534,26 @@ export function buildWeapon(type, v) {
   return g;
 }
 
+// Магические части запечённого оружия (кристаллы, ореолы, кольца) — анимируются
+function addMagic(g, type, v) {
+  const L = g.userData.meshes;
+  const A = (geo, mat, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); g.add(m); L.push(m); return m; };
+  const gem = v.gem ? gemMat(v.gem, 2.5 + (v.tier || 1) * 0.3) : null;
+  if (type === 'staff' || type === 'wand') {
+    const big = type === 'staff';
+    const top = big ? 1.1 + 0.1 : 0.34 + 0.055;
+    const cr = A(new THREE.OctahedronGeometry(big ? 0.055 : 0.03, 1), gem || gemMat('#66aaff', 2), 0, top, 0);
+    cr.scale.y = 1.6; cr.name = 'crystal';
+    A(new THREE.SphereGeometry(big ? 0.12 : 0.06, 14, 10), glowMat(v.gem || '#66aaff', 0.22), 0, top, 0).name = 'halo';
+    if ((v.tier || 1) >= 4 && big) A(new THREE.TorusGeometry(0.13, 0.006, 6, 32), gemMat(v.gem || '#66aaff', 2), 0, top, 0).name = 'ring';
+  } else if (type === 'bonestaff') {
+    for (const sx of [-1, 1]) A(new THREE.SphereGeometry(0.014, 10, 8), gem || gemMat('#55ff88', 3), sx * 0.025, 1.0 + 0.085, 0.055);
+    A(new THREE.SphereGeometry(0.15, 14, 10), glowMat(v.gem || '#55ff88', 0.16), 0, 1.09, 0).name = 'halo';
+  } else if (type === 'scythe' && v.gem) {
+    A(new THREE.SphereGeometry(0.08, 12, 10), glowMat(v.gem, 0.25), 0, 1.22, 0).name = 'halo';
+  }
+}
+
 export const WEAPON_HOLD = {
   sword: '1h', axe: '1h', hammer: '1h', wand: '1h', greatsword: '2h', scythe: '2h',
   bow: 'bow', longbow: 'bow', staff: 'staff', bonestaff: 'staff',
@@ -554,6 +577,7 @@ function setHairVisible(h, v) {
 }
 
 export function equipVisual(h, slot, item) {
+  if (h.isHero && SLOT_BUILDERS[slot]) { h.equipArmor(slot, item); return; }
   clearSlot(h, slot);
   const L = h.attachments[slot];
   if (!h.hairMeshes) {
