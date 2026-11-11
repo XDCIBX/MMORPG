@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Три Короны</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=PT+Sans:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- Загрузка -->
+  <div id="screen-loading" class="screen">
+    <h1>Три Короны</h1>
+    <div class="subtitle">ХРОНИКИ ОТКРЫТОГО МИРА</div>
+    <div class="loadbar"><div id="load-fill"></div></div>
+    <div id="load-text">Загрузка…</div>
+  </div>
+
+  <!-- Главное меню -->
+  <div id="screen-menu" class="screen hidden">
+    <h1>Три Короны</h1>
+    <div class="subtitle">ХРОНИКИ ОТКРЫТОГО МИРА</div>
+    <div class="menu-buttons">
+      <button class="btn" id="btn-continue">Продолжить</button>
+      <button class="btn" id="btn-new">Новый герой</button>
+    </div>
+    <div id="save-info" class="subtitle" style="font-size:15px;letter-spacing:1px;margin-top:16px"></div>
+  </div>
+
+  <!-- Создание персонажа -->
+  <div id="screen-create" class="screen hidden">
+    <div class="create-left">
+      <h2>Выбор класса</h2>
+      <div id="class-list"></div>
+    </div>
+    <div class="create-mid"></div>
+    <div class="create-right">
+      <h2 id="cr-name">Гном</h2>
+      <div id="cr-role" class="subtitle" style="text-align:left;font-size:16px;margin:-6px 0 10px"></div>
+      <div class="desc" id="cr-desc"></div>
+      <div style="margin-top:14px;font-family:var(--head);color:var(--gold);font-size:20px">Ветви развития (с 40 уровня)</div>
+      <div id="cr-branches"></div>
+      <div style="margin-top:14px;font-family:var(--head);color:var(--gold);font-size:20px">Умения</div>
+      <div class="skill-mini" id="cr-skills"></div>
+      <div class="create-bottom">
+        <div class="sex-toggle"><button class="btn sel" id="sex-m">Мужчина</button><button class="btn" id="sex-f">Женщина</button></div>
+        <input class="input" id="cr-input" maxlength="16" placeholder="Имя героя">
+        <button class="btn" id="btn-start">Начать путь</button>
+        <button class="btn small" id="btn-back">← Назад</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Игровой интерфейс -->
+  <div id="hud" class="hidden">
+    <div id="dmgflash"></div>
+    <div id="lowhp" class="hidden"></div>
+    <div id="labels"></div>
+    <div id="floaters"></div>
+
+    <div id="hud-player" class="frame">
+      <div class="portrait" id="p-portrait">⚒<div class="lvl" id="p-lvl">1</div></div>
+      <div class="pinfo">
+        <div class="pname" id="p-name">Герой<small id="p-cls"></small></div>
+        <div class="bar hp"><div class="lag" id="p-hp-lag"></div><div class="fill" id="p-hp"></div><span id="p-hp-t"></span></div>
+        <div class="bar res"><div class="fill" id="p-res"></div><span id="p-res-t"></span></div>
+        <div class="buffs" id="p-buffs"></div>
+      </div>
+    </div>
+
+    <div id="hud-target" class="frame hidden">
+      <div class="tname" id="t-name"></div>
+      <div class="tlvl" id="t-lvl"></div>
+      <div class="bar hp"><div class="lag" id="t-hp-lag"></div><div class="fill" id="t-hp"></div><span id="t-hp-t"></span></div>
+      <div class="buffs" id="t-buffs" style="justify-content:center;margin-top:4px"></div>
+    </div>
+
+    <div id="hud-boss" class="frame hidden">
+      <div class="bname" id="b-name"></div>
+      <div class="btitle" id="b-title"></div>
+      <div class="bar hp"><div class="lag" id="b-hp-lag"></div><div class="fill" id="b-hp"></div><span id="b-hp-t"></span></div>
+      <div class="bcast" id="b-cast"></div>
+    </div>
+
+    <div id="hud-mini" class="frame">
+      <canvas id="minimap" width="384" height="384"></canvas>
+      <div id="zone-name"></div>
+      <div id="zone-info"></div>
+    </div>
+
+    <div id="hud-tracker" class="frame"><h3>Задания</h3><div id="trk"></div></div>
+
+    <div id="castbar" class="frame hidden"><div class="bar"><div class="fill" id="cast-fill"></div><span id="cast-t"></span></div></div>
+
+    <div id="hud-bottom">
+      <div id="xpbar"><div id="xp-fill"></div><span id="xp-t"></span></div>
+      <div id="skillbar" class="frame"></div>
+    </div>
+
+    <div id="menubar" class="frame">
+      <div class="mb" data-w="char" title="Персонаж (C)">🛡<span>C</span></div>
+      <div class="mb" data-w="bag" title="Сумка (B)">🎒<span>B</span></div>
+      <div class="mb" data-w="quests" title="Задания (L)">📜<span>L</span></div>
+      <div class="mb" data-w="skills" title="Умения (K)">✨<span>K</span></div>
+      <div class="mb" data-w="map" title="Карта (M)">🗺<span>M</span></div>
+      <div class="mb" data-w="help" title="Меню (Esc)">⚙<span>Esc</span></div>
+    </div>
+
+    <div id="hud-log" class="frame"></div>
+    <div id="notify"></div>
+    <div id="errmsg"></div>
+    <div id="levelup"></div>
+  </div>
+
+  <div id="windows"></div>
+  <div id="tooltip" class="hidden"></div>
+  <div id="death" class="hidden">
+    <h1>Вы погибли</h1>
+    <button class="btn" id="btn-revive">Воскреснуть в ближайшем городе</button>
+  </div>
+
+  <script src="dist/game.js"></script>
+</body>
+</html>
