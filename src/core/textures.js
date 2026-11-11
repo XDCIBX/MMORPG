@@ -447,3 +447,201 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 }
+
+// Карты высот слоёв ландшафта (R — травяной дёрн, G — скала, B — земля с камешками), тайлируемые
+export function terrainLayers() {
+  return memo('terrainLayers', () => {
+    const w = 512;
+    const c = canvas(w);
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(w, w);
+    const nA = new Noise(501), nB = new Noise(502), nC = new Noise(503), nD = new Noise(504);
+    const tile = (n, u, v, sc, oct = 4, ridge = false) => {
+      const s = (a, b) => ridge ? n.ridge(a * sc, b * sc, oct) * 2 - 1 : n.fbm(a * sc, b * sc, oct);
+      return s(u, v) * (1 - u) * (1 - v) + s(u - 1, v) * u * (1 - v) + s(u, v - 1) * (1 - u) * v + s(u - 1, v - 1) * u * v;
+    };
+    // камешки для слоя земли
+    const rnd = mulberry32(505);
+    const pebbles = new Float32Array(w * w);
+    for (let k = 0; k < 900; k++) {
+      const px = rnd() * w, py = rnd() * w, r = 2 + rnd() * 6;
+      for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) {
+        const d = Math.hypot(x, y) / r;
+        if (d > 1) continue;
+        const ix = ((Math.floor(px + x) % w) + w) % w, iy = ((Math.floor(py + y) % w) + w) % w;
+        pebbles[iy * w + ix] = Math.max(pebbles[iy * w + ix], Math.sqrt(1 - d * d));
+      }
+    }
+    for (let y = 0; y < w; y++) for (let x = 0; x < w; x++) {
+      const u = x / w, v = y / w, i = (y * w + x) * 4;
+      const grass = tile(nA, u, v, 40, 3) * 0.6 + tile(nD, u, v, 9, 3) * 0.4;
+      const rock = tile(nB, u, v, 6, 5, true) * 0.7 + tile(nC, u, v, 24, 3) * 0.3;
+      const dirt = tile(nC, u, v, 14, 4) * 0.5 + pebbles[y * w + x] * 0.9 - 0.2;
+      img.data[i] = 128 + grass * 120;
+      img.data[i + 1] = 128 + rock * 125;
+      img.data[i + 2] = Math.max(0, Math.min(255, 110 + dirt * 140));
+      img.data[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    const t = toTex(c, { srgb: false });
+    t.generateMipmaps = true;
+    return t;
+  });
+}
+
+// Кора дерева (цвет + нормали). birch — берёзовая
+export function barkTex(birch = false) {
+  return memo('barkT' + birch, () => {
+    const w = 256, h = 512;
+    const c = canvas(w, h), ctx = c.getContext('2d');
+    const hc = canvas(w, h), hctx = hc.getContext('2d');
+    const rnd = mulberry32(birch ? 611 : 612);
+    if (birch) {
+      ctx.fillStyle = '#e8e4da'; ctx.fillRect(0, 0, w, h);
+      hctx.fillStyle = '#aaa'; hctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 70; i++) {
+        const y = rnd() * h, x = rnd() * w, len = 10 + rnd() * 50, th = 1 + rnd() * 4;
+        ctx.fillStyle = `rgba(30,25,20,${0.5 + rnd() * 0.5})`;
+        ctx.beginPath(); ctx.ellipse(x, y, len, th, 0, 0, 7); ctx.fill();
+        if (x + len > w) { ctx.beginPath(); ctx.ellipse(x - w, y, len, th, 0, 0, 7); ctx.fill(); }
+        hctx.fillStyle = '#222'; hctx.beginPath(); hctx.ellipse(x, y, len, th, 0, 0, 7); hctx.fill();
+      }
+      noiseFill(ctx, w, h, 613, 6, 14);
+    } else {
+      ctx.fillStyle = '#6a5848'; ctx.fillRect(0, 0, w, h);
+      hctx.fillStyle = '#888'; hctx.fillRect(0, 0, w, h);
+      // вертикальные пластины коры с трещинами
+      for (let i = 0; i < 26; i++) {
+        let x = rnd() * w;
+        const wd = 3 + rnd() * 6;
+        ctx.strokeStyle = `rgba(20,14,10,${0.6 + rnd() * 0.4})`; ctx.lineWidth = wd;
+        hctx.strokeStyle = '#000'; hctx.lineWidth = wd;
+        ctx.beginPath(); hctx.beginPath(); ctx.moveTo(x, 0); hctx.moveTo(x, 0);
+        for (let y = 0; y <= h; y += 24) { x += (rnd() - 0.5) * 14; ctx.lineTo(x, y); hctx.lineTo(x, y); }
+        ctx.stroke(); hctx.stroke();
+      }
+      for (let i = 0; i < 160; i++) {
+        const x = rnd() * w, y = rnd() * h;
+        ctx.strokeStyle = 'rgba(15,10,8,0.5)'; ctx.lineWidth = 1 + rnd() * 2;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (rnd() - 0.5) * 20, y + 4); ctx.stroke();
+      }
+      noiseFill(ctx, w, h, 614, 10, 30);
+      noiseFill(hctx, w, h, 615, 16, 50);
+      speckle(ctx, w, h, rnd, 600, ['rgba(80,100,50,0.25)', 'rgba(0,0,0,0.2)', 'rgba(160,150,130,0.15)'], 1, 3);
+    }
+    const map = toTex(c); const normalMap = toTex(heightToNormal(hc, 4), { srgb: false });
+    return { map, normalMap };
+  });
+}
+
+// Пучок листьев с прозрачностью (для карточек кроны). kind: 'broad' | 'small' | 'willow'
+export function leafCard(kind = 'broad') {
+  return memo('leaf' + kind, () => {
+    const w = 256, c = canvas(w), ctx = c.getContext('2d');
+    const rnd = mulberry32(kind === 'broad' ? 621 : kind === 'small' ? 622 : 623);
+    ctx.clearRect(0, 0, w, w);
+    // веточки
+    ctx.strokeStyle = 'rgba(70,50,30,1)'; ctx.lineWidth = 3;
+    for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.moveTo(w / 2, w / 2); ctx.lineTo(w / 2 + (rnd() - 0.5) * w * 0.8, w / 2 + (rnd() - 0.5) * w * 0.8); ctx.stroke(); }
+    const n = kind === 'willow' ? 140 : kind === 'small' ? 170 : 110;
+    for (let i = 0; i < n; i++) {
+      let x, y;
+      if (kind === 'willow') { x = w * (0.15 + rnd() * 0.7); y = rnd() * w; }
+      else { const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * w * 0.44; x = w / 2 + Math.cos(a) * r; y = w / 2 + Math.sin(a) * r; }
+      const L = kind === 'small' ? 8 + rnd() * 6 : kind === 'willow' ? 14 + rnd() * 10 : 12 + rnd() * 9;
+      const W = kind === 'willow' ? L * 0.22 : L * 0.5;
+      const ang = kind === 'willow' ? Math.PI / 2 + (rnd() - 0.5) * 0.5 : rnd() * Math.PI * 2;
+      const l = 0.55 + rnd() * 0.45;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+      const g = ctx.createLinearGradient(-L, 0, L, 0);
+      g.addColorStop(0, `rgb(${70 * l | 0},${125 * l | 0},${40 * l | 0})`);
+      g.addColorStop(1, `rgb(${120 * l | 0},${175 * l | 0},${70 * l | 0})`);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.moveTo(-L, 0); ctx.quadraticCurveTo(0, -W, L, 0); ctx.quadraticCurveTo(0, W, -L, 0); ctx.fill();
+      ctx.strokeStyle = 'rgba(40,70,20,0.6)'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(-L, 0); ctx.lineTo(L, 0); ctx.stroke();
+      ctx.restore();
+    }
+    const t = toTex(c, { repeat: false });
+    return t;
+  });
+}
+
+// Хвойная лапа (вид сверху), прозрачный фон
+export function pineCard(snow = false) {
+  return memo('pine' + snow, () => {
+    const w = 256, h = 128, c = canvas(w, h), ctx = c.getContext('2d');
+    const rnd = mulberry32(snow ? 631 : 632);
+    ctx.clearRect(0, 0, w, h);
+    const branch = (x0, y0, len, ang, lvl) => {
+      const x1 = x0 + Math.cos(ang) * len, y1 = y0 + Math.sin(ang) * len;
+      ctx.strokeStyle = '#4a3622'; ctx.lineWidth = lvl === 0 ? 3 : 1.5;
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      const steps = Math.floor(len / 3);
+      for (let i = 0; i < steps; i++) {
+        const t = i / steps, px = x0 + (x1 - x0) * t, py = y0 + (y1 - y0) * t;
+        const nl = (lvl === 0 ? 16 : 10) * (1 - t * 0.6);
+        for (const sd of [-1, 1]) {
+          const na = ang + sd * (0.9 + rnd() * 0.3);
+          const l = 0.5 + rnd() * 0.5;
+          ctx.strokeStyle = snow && rnd() < 0.45 ? `rgba(235,242,250,0.95)` : `rgb(${30 * l | 0},${(70 + rnd() * 30) * l | 0},${35 * l | 0})`;
+          ctx.lineWidth = 1.6;
+          ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + Math.cos(na) * nl, py + Math.sin(na) * nl); ctx.stroke();
+        }
+      }
+      if (lvl === 0) for (let i = 1; i < 6; i++) branch(x0 + (x1 - x0) * i / 6, y0 + (y1 - y0) * i / 6, len * 0.35 * (1 - i / 8), ang + (i % 2 ? 0.7 : -0.7), 1);
+    };
+    branch(4, h / 2, w - 12, 0, 0);
+    return toTex(c, { repeat: false });
+  });
+}
+
+// Мех: короткие штрихи по направлению «шерсти» (оттенок задаёт цвет материала)
+export function furTex() {
+  return memo('fur', () => {
+    const w = 256, c = canvas(w), ctx = c.getContext('2d');
+    const hc = canvas(w), hctx = hc.getContext('2d');
+    ctx.fillStyle = '#9a9a9a'; ctx.fillRect(0, 0, w, w);
+    hctx.fillStyle = '#808080'; hctx.fillRect(0, 0, w, w);
+    const rnd = mulberry32(701);
+    for (let i = 0; i < 5200; i++) {
+      const x = rnd() * w, y = rnd() * w, len = 5 + rnd() * 10, a = Math.PI / 2 + (rnd() - 0.5) * 0.5;
+      const l = 110 + rnd() * 145 | 0;
+      ctx.strokeStyle = `rgba(${l},${l},${l},0.55)`; ctx.lineWidth = 0.8 + rnd() * 1.2;
+      hctx.strokeStyle = `rgba(${l},${l},${l},0.6)`; hctx.lineWidth = 1;
+      for (const [ox, oy] of [[0, 0], [w, 0], [-w, 0], [0, w], [0, -w]]) {
+        ctx.beginPath(); ctx.moveTo(x + ox, y + oy); ctx.lineTo(x + ox + Math.cos(a) * len, y + oy + Math.sin(a) * len); ctx.stroke();
+        hctx.beginPath(); hctx.moveTo(x + ox, y + oy); hctx.lineTo(x + ox + Math.cos(a) * len, y + oy + Math.sin(a) * len); hctx.stroke();
+      }
+    }
+    const map = toTex(c);
+    map.repeat.set(3, 3);
+    const normalMap = toTex(heightToNormal(hc, 2.5), { srgb: false });
+    normalMap.repeat.set(3, 3);
+    return { map, normalMap };
+  });
+}
+
+// Чешуя (драконы, ящеры): цвет — от материала
+export function scaleTex() {
+  return memo('scales', () => {
+    const w = 256, c = canvas(w), ctx = c.getContext('2d');
+    const hc = canvas(w), hctx = hc.getContext('2d');
+    ctx.fillStyle = '#707070'; ctx.fillRect(0, 0, w, w);
+    hctx.fillStyle = '#000'; hctx.fillRect(0, 0, w, w);
+    const rnd = mulberry32(801);
+    const rows = 14, cols = 12, rw = w / cols, rh = w / rows;
+    for (let r = -1; r <= rows; r++) for (let k = -1; k <= cols; k++) {
+      const x = k * rw + (r % 2) * rw / 2, y = r * rh;
+      const l = 150 + rnd() * 90 | 0;
+      const g = ctx.createRadialGradient(x, y + rh * 0.2, 1, x, y + rh * 0.4, rw * 0.7);
+      g.addColorStop(0, `rgb(${l},${l},${l})`); g.addColorStop(1, `rgb(${l * 0.45 | 0},${l * 0.45 | 0},${l * 0.45 | 0})`);
+      ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y + rh * 0.5, rw * 0.55, rh * 0.95, 0, 0, Math.PI); ctx.fill();
+      const hg = hctx.createRadialGradient(x, y + rh * 0.2, 1, x, y + rh * 0.4, rw * 0.7);
+      hg.addColorStop(0, '#fff'); hg.addColorStop(1, '#222');
+      hctx.fillStyle = hg; hctx.beginPath(); hctx.ellipse(x, y + rh * 0.5, rw * 0.55, rh * 0.95, 0, 0, Math.PI); hctx.fill();
+    }
+    const map = toTex(c); map.repeat.set(4, 4);
+    const normalMap = toTex(heightToNormal(hc, 3), { srgb: false }); normalMap.repeat.set(4, 4);
+    return { map, normalMap };
+  });
+}

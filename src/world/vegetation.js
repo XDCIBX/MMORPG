@@ -4,6 +4,7 @@ import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometr
 import { mulberry32, Noise, smoothstep } from '../core/util.js';
 import { WORLD_HALF, CITIES, SECRET_SHOPS, POIS, BIOMES } from '../data/world.js';
 import { IS_PHONE } from '../core/device.js';
+import { barkTex, leafCard, pineCard } from '../core/textures.js';
 
 export const windUniforms = { uTime: { value: 0 } };
 
@@ -44,110 +45,187 @@ function trunk(h, r0, r1, seg = 7) {
 }
 
 const N = new Noise(77);
+const UPV = new THREE.Vector3(0, 1, 0);
+
+// Раскраска вершин с сохранением UV (для коры и листвы)
+function paint(g, fn) {
+  g = g.index ? g.toNonIndexed() : g;
+  if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+  const p = g.attributes.position, n = g.attributes.normal;
+  const col = new Float32Array(p.count * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < p.count; i++) {
+    fn(c, p.getX(i), p.getY(i), p.getZ(i), n.getX(i), n.getY(i), n.getZ(i));
+    c.convertSRGBToLinear();
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+}
+
+// Ствол или ветка: сужающийся неровный цилиндр, расширение у корней, UV под кору
+function limb(len, r0, r1, seg = 8, flare = 0, seed = 0) {
+  const g = new THREE.CylinderGeometry(r1, r0, len, seg, Math.max(2, Math.round(len * 1.5)), true);
+  g.translate(0, len / 2, 0);
+  const p = g.attributes.position, uv = g.attributes.uv;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const t = y / len, an = Math.atan2(z, x);
+    const k = 1 + N.noise(an * 1.5 + seed, y * 1.2) * 0.1 + flare * Math.pow(1 - t, 7) * (1 + 0.45 * Math.sin(an * 5 + seed));
+    p.setXYZ(i, x * k + N.noise(y * 0.5, seed) * 0.08 * t * len * 0.1, y, z * k);
+    uv.setXY(i, uv.getX(i) * Math.max(1, Math.round(r0 * 8)), uv.getY(i) * len / 1.6);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+// Поставить геометрию (ось +Y) от точки from в направлении dir
+function place(g, from, dir) {
+  const q = new THREE.Quaternion().setFromUnitVectors(UPV, dir.clone().normalize());
+  g.applyQuaternion(q);
+  g.translate(from.x, from.y, from.z);
+  return g;
+}
+// Карточка листвы: квадрат со случайной ориентацией, нормали — от центра кроны (объёмное освещение)
+function leafCards(rnd, cx, cy, cz, R, n, size, center, tint, opts = {}) {
+  const parts = [];
+  for (let i = 0; i < n; i++) {
+    const a = rnd() * Math.PI * 2, ph = Math.acos(2 * rnd() - 1), r = Math.cbrt(rnd()) * R;
+    const px = cx + Math.sin(ph) * Math.cos(a) * r, py = cy + Math.cos(ph) * r * (opts.flat || 0.75), pz = cz + Math.sin(ph) * Math.sin(a) * r;
+    const sz = size * (0.75 + rnd() * 0.5);
+    const g = new THREE.PlaneGeometry(sz, sz * (opts.aspect || 1));
+    g.rotateX(rnd() * Math.PI); g.rotateY(rnd() * Math.PI * 2); g.rotateZ((rnd() - 0.5) * 1.2);
+    g.translate(px, py, pz);
+    const pp = g.attributes.position, nn = g.attributes.normal;
+    const v = new THREE.Vector3();
+    for (let k = 0; k < pp.count; k++) {
+      v.set(pp.getX(k) - center.x, (pp.getY(k) - center.y) * 1.3, pp.getZ(k) - center.z).normalize();
+      v.y += 0.35; v.normalize();
+      nn.setXYZ(k, v.x, v.y, v.z);
+    }
+    const shade = 0.55 + 0.6 * Math.min(1, Math.hypot(px - center.x, (py - center.y), pz - center.z) / (opts.span || R * 2));
+    const tv = 0.88 + rnd() * 0.24;
+    parts.push(paint(g, (c, x, y) => {
+      const up = Math.min(1.15, 0.85 + (y - center.y) * 0.08);
+      c.setRGB(tint[0] * shade * tv * up, tint[1] * shade * tv * up, tint[2] * shade * tv * up);
+    }));
+  }
+  return parts;
+}
+
+const BARK = (c, k = 1) => c.setRGB(0.62 * k, 0.55 * k, 0.48 * k);
 const TREE_BUILDERS = {
-  pine(rnd, snow = false) {
-    const parts = [];
-    const H = 7 + rnd() * 4;
-    const t = colorize(trunk(H * 0.45, 0.32, 0.16), (c) => c.setRGB(0.28, 0.18, 0.11));
-    parts.push(t);
-    const layers = 5;
-    for (let i = 0; i < layers; i++) {
-      const y = H * 0.18 + i * H * 0.16;
-      const r = (1 - i / layers) * 2.6 + 0.5;
-      const cone = new THREE.ConeGeometry(r, H * 0.3, 9, 2);
-      // неровный край
-      const p = cone.attributes.position;
-      for (let k = 0; k < p.count; k++) {
-        const yy = p.getY(k);
-        if (yy < 0) { p.setY(k, yy - Math.abs(N.noise(p.getX(k) * 3 + i, p.getZ(k) * 3)) * 0.5); }
-      }
-      cone.computeVertexNormals();
-      cone.rotateY(rnd() * 3);
-      cone.translate(0, y + H * 0.15, 0);
-      const base = 0.12 + rnd() * 0.03;
-      parts.push(colorize(cone, (c, x, yy, z, nx, ny) => {
-        const shade = 0.75 + (yy - y) / (H * 0.3) * 0.4;
-        if (snow && ny > 0.35) c.setRGB(0.88, 0.92, 0.97);
-        else c.setRGB(base * 0.6 * shade, (base + 0.2) * shade, base * 0.55 * shade);
-      }));
-    }
-    return { geo: mergeGeometries(parts), h: H, r: 0.5 };
-  },
   oak(rnd) {
-    const parts = [];
-    const H = 4 + rnd() * 1.5;
-    parts.push(colorize(trunk(H, 0.55, 0.32, 8), (c) => c.setRGB(0.3, 0.21, 0.13)));
-    // ветви
-    for (let i = 0; i < 3; i++) {
-      const b = trunk(2.2, 0.2, 0.08, 5);
-      b.rotateZ(0.8 + rnd() * 0.3); b.rotateY(i * 2.1 + rnd());
-      b.translate(0, H * 0.75, 0);
-      parts.push(colorize(b, (c) => c.setRGB(0.3, 0.21, 0.13)));
+    const H = 3.8 + rnd() * 1.6, seed = rnd() * 50;
+    const wood = [paint(limb(H + 0.6, 0.55, 0.32, 10, 0.7, seed), (c) => BARK(c))];
+    const leaves = [];
+    const center = new THREE.Vector3(0, H + 2.2, 0);
+    const nb = 4 + Math.floor(rnd() * 2);
+    const tint = [0.85 + rnd() * 0.15, 0.95 + rnd() * 0.1, 0.72];
+    for (let i = 0; i < nb; i++) {
+      const a = i / nb * Math.PI * 2 + rnd() * 0.6;
+      const from = new THREE.Vector3(0, H * (0.6 + rnd() * 0.3), 0);
+      const dir = new THREE.Vector3(Math.cos(a), 0.7 + rnd() * 0.5, Math.sin(a));
+      const L = 2.4 + rnd() * 1.2;
+      wood.push(paint(place(limb(L, 0.22, 0.07, 6, 0, seed + i), from, dir), (c) => BARK(c, 0.9)));
+      const end = from.clone().addScaledVector(dir.normalize(), L);
+      // мелкие веточки
+      for (let k = 0; k < 2; k++) {
+        const d2 = dir.clone().add(new THREE.Vector3(rnd() - 0.5, rnd() * 0.5, rnd() - 0.5)).normalize();
+        wood.push(paint(place(limb(1.2, 0.07, 0.02, 4, 0, seed + i * 3 + k), from.clone().lerp(end, 0.6), d2), (c) => BARK(c, 0.85)));
+      }
+      leaves.push(...leafCards(rnd, end.x, end.y + 0.3, end.z, 1.7, 13, 2.0, center, tint, { span: 4.5 }));
     }
-    const count = 5 + Math.floor(rnd() * 3);
-    const hue = rnd();
-    for (let i = 0; i < count; i++) {
-      const a = (i / count) * Math.PI * 2 + rnd();
-      const d = i === 0 ? 0 : 1.6 + rnd() * 1.0;
-      const r = 1.9 + rnd() * 0.9;
-      const g = blob(r, 1, rnd, N, 1, 0.8, 1);
-      g.translate(Math.cos(a) * d, H + 1.2 + rnd() * 1.6 - d * 0.25, Math.sin(a) * d);
-      parts.push(colorize(g, (c, x, y, z, nx, ny) => {
-        const s = 0.6 + Math.max(0, ny) * 0.5;
-        c.setRGB((0.16 + hue * 0.08) * s, (0.34 + hue * 0.08) * s, 0.09 * s);
-      }));
-    }
-    return { geo: mergeGeometries(parts), h: H + 4, r: 0.7 };
+    leaves.push(...leafCards(rnd, 0, H + 2.4, 0, 2.0, 16, 2.1, center, tint, { span: 4.5 }));
+    return { trunk: mergeGeometries(wood), leaves: mergeGeometries(leaves), h: H + 4, r: 0.7, bark: 'oak', leaf: 'broad' };
   },
   birch(rnd) {
-    const parts = [];
-    const H = 6 + rnd() * 2;
-    parts.push(colorize(trunk(H, 0.24, 0.14, 7), (c, x, y) => {
-      const mark = N.noise(y * 3, x * 9) > 0.45;
-      if (mark) c.setRGB(0.12, 0.11, 0.1); else c.setRGB(0.86, 0.84, 0.8);
-    }));
-    for (let i = 0; i < 4; i++) {
-      const g = blob(1.3 + rnd() * 0.5, 1, rnd, N, 1, 1.2, 1);
-      g.translate((rnd() - 0.5) * 1.6, H - 0.5 + i * 0.8, (rnd() - 0.5) * 1.6);
-      parts.push(colorize(g, (c, x, y, z, nx, ny) => {
-        const s = 0.65 + Math.max(0, ny) * 0.45;
-        c.setRGB(0.36 * s, 0.56 * s, 0.16 * s);
-      }));
+    const H = 7 + rnd() * 2.5, seed = rnd() * 50;
+    const wood = [paint(limb(H, 0.24, 0.08, 8, 0.25, seed), (c) => c.setRGB(1, 1, 1))];
+    const leaves = [];
+    const center = new THREE.Vector3(0, H - 0.5, 0);
+    const tint = [1.0, 1.05, 0.78];
+    for (let i = 0; i < 5; i++) {
+      const a = i * 2.4 + rnd();
+      const from = new THREE.Vector3(0, H * (0.45 + i * 0.1), 0);
+      const dir = new THREE.Vector3(Math.cos(a), 1.1, Math.sin(a));
+      wood.push(paint(place(limb(1.6, 0.08, 0.03, 5, 0, seed + i), from, dir), (c) => c.setRGB(0.95, 0.95, 0.95)));
+      const end = from.clone().addScaledVector(dir.normalize(), 1.6);
+      leaves.push(...leafCards(rnd, end.x, end.y + 0.4, end.z, 1.2, 9, 1.4, center, tint, { span: 3.2 }));
     }
-    return { geo: mergeGeometries(parts), h: H + 3, r: 0.4 };
+    leaves.push(...leafCards(rnd, 0, H, 0, 1.3, 10, 1.4, center, tint, { span: 3.2 }));
+    return { trunk: mergeGeometries(wood), leaves: mergeGeometries(leaves), h: H + 2, r: 0.35, bark: 'birch', leaf: 'small' };
+  },
+  pine(rnd, snow = false) {
+    const H = 9 + rnd() * 5, seed = rnd() * 50;
+    const wood = [paint(limb(H, 0.4, 0.04, 8, 0.5, seed), (c) => BARK(c, 0.85))];
+    // тёмная «сердцевина» кроны, чтобы ель не просвечивала
+    const core = new THREE.ConeGeometry(1.6, H * 0.78, 8, 1, true);
+    core.translate(0, H * 0.58, 0);
+    wood.push(paint(core, (c) => c.setRGB(0.12, 0.2, 0.12)));
+    const leaves = [];
+    const tiers = 10 + Math.floor(rnd() * 3);
+    for (let t = 0; t < tiers; t++) {
+      const k = t / tiers;
+      const y = H * (0.2 + k * 0.78);
+      const L = (1 - k) * 3.4 + 0.7;
+      const nbr = 7;
+      for (let b = 0; b < nbr; b++) {
+        const a = b / nbr * Math.PI * 2 + t * 0.5 + rnd() * 0.3;
+        const g = new THREE.PlaneGeometry(L, L * 0.5);
+        g.rotateX(-Math.PI / 2);
+        g.translate(L / 2, 0, 0);
+        g.rotateZ(-(0.25 + (1 - k) * 0.25 + rnd() * 0.1));
+        g.rotateY(-a);
+        g.translate(0, y, 0);
+        const nn = g.attributes.normal, pp = g.attributes.position;
+        for (let q = 0; q < nn.count; q++) { const vx = pp.getX(q), vz = pp.getZ(q), l = Math.hypot(vx, vz) || 1; nn.setXYZ(q, vx / l * 0.5, 0.85, vz / l * 0.5); }
+        const sh = 0.7 + k * 0.4;
+        leaves.push(paint(g, (c) => c.setRGB(0.75 * sh, 0.85 * sh, 0.75 * sh)));
+      }
+    }
+    return { trunk: mergeGeometries(wood), leaves: mergeGeometries(leaves), h: H, r: 0.5, bark: 'oak', leaf: snow ? 'pinesnow' : 'pine' };
   },
   willow(rnd) {
-    const parts = [];
-    const H = 3.5 + rnd();
-    const t = trunk(H, 0.6, 0.35, 8);
-    parts.push(colorize(t, (c) => c.setRGB(0.24, 0.2, 0.14)));
+    const H = 3.6 + rnd(), seed = rnd() * 50;
+    const wood = [paint(limb(H + 0.5, 0.65, 0.38, 10, 0.8, seed), (c) => BARK(c, 0.8))];
+    const leaves = [];
+    const center = new THREE.Vector3(0, H + 1.5, 0);
+    const tint = [0.95, 0.92, 0.7];
     for (let i = 0; i < 6; i++) {
       const a = i / 6 * Math.PI * 2;
-      const g = blob(1.8, 1, rnd, N, 1, 1.5, 1);
-      const p = g.attributes.position;
-      for (let k = 0; k < p.count; k++) if (p.getY(k) < 0) p.setY(k, p.getY(k) * 1.8);
-      g.computeVertexNormals();
-      g.translate(Math.cos(a) * 1.8, H + 1.2, Math.sin(a) * 1.8);
-      parts.push(colorize(g, (c, x, y, z, nx, ny) => {
-        const s = 0.55 + Math.max(0, ny) * 0.4;
-        c.setRGB(0.25 * s, 0.33 * s, 0.13 * s);
-      }));
+      const from = new THREE.Vector3(0, H * 0.85, 0), dir = new THREE.Vector3(Math.cos(a), 0.6, Math.sin(a));
+      wood.push(paint(place(limb(2.4, 0.18, 0.06, 6, 0, seed + i), from, dir), (c) => BARK(c, 0.8)));
+      const end = from.clone().addScaledVector(dir.normalize(), 2.4);
+      leaves.push(...leafCards(rnd, end.x, end.y, end.z, 1.4, 8, 1.8, center, tint, { span: 4 }));
+      // свисающие ветви
+      for (let k = 0; k < 4; k++) {
+        const len = 2.4 + rnd() * 1.4;
+        const g = new THREE.PlaneGeometry(0.9, len);
+        g.translate(0, -len / 2, 0);
+        g.rotateY(rnd() * Math.PI);
+        g.translate(end.x + (rnd() - 0.5) * 1.6, end.y + 0.3, end.z + (rnd() - 0.5) * 1.6);
+        const nn = g.attributes.normal;
+        for (let q = 0; q < nn.count; q++) nn.setXYZ(q, Math.cos(a) * 0.6, 0.6, Math.sin(a) * 0.6);
+        leaves.push(paint(g, (c, x, y) => { const sh = 0.6 + Math.max(0, (y - H * 0.5)) * 0.08; c.setRGB(tint[0] * sh, tint[1] * sh, tint[2] * sh); }));
+      }
     }
-    return { geo: mergeGeometries(parts), h: H + 3, r: 0.7 };
+    return { trunk: mergeGeometries(wood), leaves: mergeGeometries(leaves), h: H + 3, r: 0.75, bark: 'oak', leaf: 'willow' };
   },
   dead(rnd) {
-    const parts = [];
-    const H = 4 + rnd() * 3;
-    const col = (c) => c.setRGB(0.18, 0.15, 0.14);
-    parts.push(colorize(trunk(H, 0.38, 0.12, 6), col));
+    const H = 4.5 + rnd() * 3, seed = rnd() * 50;
+    const col = (c) => c.setRGB(0.36, 0.33, 0.31);
+    const wood = [paint(limb(H, 0.42, 0.08, 8, 0.6, seed), col)];
     for (let i = 0; i < 5; i++) {
-      const L = 1.5 + rnd() * 1.8;
-      const b = trunk(L, 0.13, 0.03, 4);
-      b.rotateZ(0.6 + rnd() * 0.6); b.rotateY(rnd() * 6.28);
-      b.translate(0, H * (0.45 + rnd() * 0.5), 0);
-      parts.push(colorize(b, col));
+      const a = rnd() * Math.PI * 2;
+      const from = new THREE.Vector3(0, H * (0.4 + rnd() * 0.5), 0);
+      const dir = new THREE.Vector3(Math.cos(a), 0.4 + rnd() * 0.8, Math.sin(a));
+      const L = 1.4 + rnd() * 1.8;
+      wood.push(paint(place(limb(L, 0.13, 0.03, 5, 0, seed + i), from, dir), col));
+      const end = from.clone().addScaledVector(dir.clone().normalize(), L * 0.7);
+      const d2 = dir.clone().add(new THREE.Vector3(rnd() - 0.5, 0.6, rnd() - 0.5));
+      wood.push(paint(place(limb(L * 0.5, 0.05, 0.01, 4, 0, seed + i * 7), end, d2), col));
     }
-    return { geo: mergeGeometries(parts), h: H, r: 0.4 };
+    return { trunk: mergeGeometries(wood), leaves: null, h: H, r: 0.45, bark: 'oak', leaf: null };
   },
 };
 TREE_BUILDERS.snowpine = (rnd) => TREE_BUILDERS.pine(rnd, true);
@@ -163,20 +241,13 @@ function rockGeo(rnd, tint) {
 }
 
 function bushGeo(rnd, col) {
-  const parts = [];
-  for (let i = 0; i < 3; i++) {
-    const g = blob(0.7 + rnd() * 0.3, 1, rnd, N);
-    g.translate((rnd() - 0.5) * 0.9, 0.5, (rnd() - 0.5) * 0.9);
-    parts.push(colorize(g, (c, x, y, z, nx, ny) => {
-      const s = 0.6 + Math.max(0, ny) * 0.45;
-      c.setRGB(col[0] * s, col[1] * s, col[2] * s);
-    }));
-  }
-  return mergeGeometries(parts);
+  const center = new THREE.Vector3(0, 0.5, 0);
+  return mergeGeometries(leafCards(rnd, 0, 0.6, 0, 0.75, 16, 1.0, center, col, { span: 1.8, flat: 0.6 }));
 }
 
-function windMaterial(strength = 0.06, base = 1.5) {
-  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 });
+function windMaterial(strength = 0.06, base = 1.5, opts = {}) {
+  const m = new THREE.MeshStandardMaterial(Object.assign({ vertexColors: true, roughness: 0.9, metalness: 0 }, opts.mat || {}));
+  const flutter = opts.flutter || 0;
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = windUniforms.uTime;
     // растворение листвы возле камеры (чтобы деревья не закрывали обзор)
@@ -202,7 +273,9 @@ function windMaterial(strength = 0.06, base = 1.5) {
         float sway = max(0.0, transformed.y - ${base.toFixed(2)});
         float ph = uTime * 1.3 + ip.x * 0.07 + ip.z * 0.05;
         transformed.x += sin(ph) * sway * ${strength.toFixed(3)};
-        transformed.z += cos(ph * 0.8) * sway * ${(strength * 0.6).toFixed(3)};`);
+        transformed.z += cos(ph * 0.8) * sway * ${(strength * 0.6).toFixed(3)};
+        float fl = ${flutter.toFixed(3)} * sin(uTime * 5.0 + position.x * 2.1 + position.z * 1.7 + ip.x);
+        transformed += vec3(fl, fl * 0.6, -fl * 0.8);`);
   };
   return m;
 }
@@ -218,15 +291,27 @@ export class Vegetation {
     this.group = new THREE.Group();
     this.group.name = 'vegetation';
     scene.add(this.group);
-    this.treeMat = windMaterial(0.045, 2.5);
+    const bark = barkTex(false), birch = barkTex(true);
+    this.barkMats = {
+      oak: windMaterial(0.04, 2.5, { mat: { map: bark.map, normalMap: bark.normalMap, roughness: 0.95 } }),
+      birch: windMaterial(0.04, 2.5, { mat: { map: birch.map, normalMap: birch.normalMap, roughness: 0.85 } }),
+    };
+    const leafOpts = (map) => ({ flutter: 0.035, mat: { map, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.75 } });
+    this.leafMats = {
+      broad: windMaterial(0.04, 2.5, leafOpts(leafCard('broad'))),
+      small: windMaterial(0.04, 2.5, leafOpts(leafCard('small'))),
+      willow: windMaterial(0.05, 2.5, leafOpts(leafCard('willow'))),
+      pine: windMaterial(0.03, 2.5, leafOpts(pineCard(false))),
+      pinesnow: windMaterial(0.03, 2.5, leafOpts(pineCard(true))),
+    };
     this.rockMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: false });
-    this.bushMat = windMaterial(0.08, 0.3);
+    this.bushMat = windMaterial(0.06, 0.2, leafOpts(leafCard('broad')));
     this.chunks = [];
     this.grassChunks = new Map();
     this.buildVariants();
     this.placeAll();
-    this.buildGrassAssets();
     this.grassDist = 110;
+    this.buildGrassAssets();
     this.treeDist = 480;
     this.grassDensity = IS_PHONE ? 0.4 : 0.65;
   }
@@ -245,9 +330,9 @@ export class Vegetation {
       dark: [rockGeo(rnd, [0.17, 0.14, 0.13]), rockGeo(rnd, [0.22, 0.17, 0.15])],
     };
     this.bushVariants = {
-      green: bushGeo(rnd, [0.2, 0.42, 0.12]),
-      dark: bushGeo(rnd, [0.15, 0.3, 0.1]),
-      swamp: bushGeo(rnd, [0.26, 0.3, 0.12]),
+      green: bushGeo(rnd, [0.55, 0.78, 0.4]),
+      dark: bushGeo(rnd, [0.42, 0.6, 0.34]),
+      swamp: bushGeo(rnd, [0.6, 0.62, 0.36]),
     };
   }
 
@@ -300,7 +385,8 @@ export class Vegetation {
         s.set(sc, sc * (0.9 + rnd() * 0.2), sc);
         p.set(px, h - 0.2, pz);
         m4.compose(p, q, s);
-        add('t_' + type + vi, v.geo, this.treeMat, px, pz, m4.clone());
+        add('t_' + type + vi, v.trunk, this.barkMats[v.bark], px, pz, m4.clone());
+        if (v.leaves) add('l_' + type + vi, v.leaves, this.leafMats[v.leaf], px, pz, m4.clone());
         this.collision.addCircle(px, pz, v.r * sc);
       }
     }
@@ -358,84 +444,123 @@ export class Vegetation {
     }
   }
 
-  buildGrassAssets() {
-    // Пучок травинок
-    const blades = 9;
-    const pos = [], col = [], nrm = [];
-    const rnd = mulberry32(7);
+  // Пучок травы: тонкие изогнутые травинки из нескольких сегментов
+  makeTuft(rnd, blades, segs, hMin, hMax) {
+    const pos = [], col = [], nrm = [], tip = [];
     for (let b = 0; b < blades; b++) {
       const a = rnd() * Math.PI * 2;
-      const r = rnd() * 0.35;
+      const r = Math.sqrt(rnd()) * 0.32;
       const bx = Math.cos(a) * r, bz = Math.sin(a) * r;
-      const h = 0.35 + rnd() * 0.45;
-      const w = 0.045 + rnd() * 0.03;
-      const lean = (rnd() - 0.5) * 0.4;
-      const dir = rnd() * Math.PI;
-      const dx = Math.cos(dir) * w, dz = Math.sin(dir) * w;
-      const tipx = bx + Math.cos(a) * lean, tipz = bz + Math.sin(a) * lean;
-      const midx = bx + Math.cos(a) * lean * 0.35, midz = bz + Math.sin(a) * lean * 0.35;
-      const v = [
-        [bx - dx, 0, bz - dz], [bx + dx, 0, bz + dz], [midx + dx * 0.7, h * 0.55, midz + dz * 0.7], [midx - dx * 0.7, h * 0.55, midz - dz * 0.7], [tipx, h, tipz],
-      ];
-      const tris = [[0, 1, 2], [0, 2, 3], [3, 2, 4]];
-      const shadeOf = (y) => Math.pow(0.3 + (y / h) * 0.75, 2.2);
-      for (const t of tris) for (const k of t) {
-        pos.push(...v[k]);
-        const s = shadeOf(v[k][1]);
-        col.push(s, s, s);
-        nrm.push(0, 1, 0);
+      const h = hMin + rnd() * (hMax - hMin);
+      const w = 0.018 + rnd() * 0.022;
+      const bend = 0.15 + rnd() * 0.45; // насколько клонится
+      const dir = a + (rnd() - 0.5) * 1.2; // направление наклона
+      const face = rnd() * Math.PI; // поворот плоскости травинки
+      const fx = Math.cos(face), fz = Math.sin(face);
+      const ring = [];
+      for (let k = 0; k <= segs; k++) {
+        const t = k / segs;
+        const off = bend * t * t * h;
+        const cx = bx + Math.cos(dir) * off, cz = bz + Math.sin(dir) * off;
+        const y = h * t * (1 - bend * 0.35 * t);
+        const ww = w * (1 - t * 0.92);
+        ring.push([[cx - fx * ww, y, cz - fz * ww], [cx + fx * ww, y, cz + fz * ww], t]);
+      }
+      // нормаль — смесь «вверх» и стороны травинки: мягкое освещение
+      const nx = -fz * 0.35, nz = fx * 0.35;
+      for (let k = 0; k < segs; k++) {
+        const [l0, r0, t0] = ring[k], [l1, r1, t1] = ring[k + 1];
+        const quads = [[l0, t0], [r0, t0], [r1, t1], [l0, t0], [r1, t1], [l1, t1]];
+        for (const [p, t] of quads) {
+          pos.push(p[0], p[1], p[2]);
+          const sh = Math.pow(0.22 + t * 0.85, 2.2);
+          col.push(sh, sh, sh);
+          nrm.push(nx, 1, nz);
+          tip.push(t);
+        }
       }
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-    this.grassGeo = g;
+    g.setAttribute('aTip', new THREE.Float32BufferAttribute(tip, 1));
+    g.computeBoundingSphere();
+    return g;
+  }
+
+  buildGrassAssets() {
+    const rnd = mulberry32(7);
+    this.grassGeoNear = this.makeTuft(rnd, IS_PHONE ? 10 : 16, 4, 0.28, 0.75);
+    this.grassGeoFar = this.makeTuft(rnd, IS_PHONE ? 6 : 9, 3, 0.3, 0.7);
+    this.grassGeo = this.grassGeoNear;
+    this.playerUniform = { value: new THREE.Vector3() };
+    this.camUniform = { value: new THREE.Vector3() };
+    this.grassFade = { value: 110 };
     const m = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
     m.onBeforeCompile = (sh) => {
       sh.uniforms.uTime = windUniforms.uTime;
-      sh.uniforms.uPlayer = this.playerUniform = { value: new THREE.Vector3() };
+      sh.uniforms.uPlayer = this.playerUniform;
+      sh.uniforms.uCam = this.camUniform;
+      sh.uniforms.uFade = this.grassFade;
       sh.vertexShader = sh.vertexShader
-        .replace('#include <common>', '#include <common>\nuniform float uTime; uniform vec3 uPlayer;')
+        .replace('#include <common>', '#include <common>\nuniform float uTime; uniform vec3 uPlayer; uniform vec3 uCam; uniform float uFade;\nattribute float aTip; varying float vTip;')
         .replace('#include <begin_vertex>', `#include <begin_vertex>
           vec3 ip = instanceMatrix[3].xyz;
-          float hgt = transformed.y;
-          float ph = uTime * 2.2 + ip.x * 0.25 + ip.z * 0.18;
-          float gust = sin(uTime * 0.6 + ip.x * 0.02) * 0.5 + 0.5;
-          transformed.x += sin(ph) * hgt * (0.12 + gust * 0.18);
-          transformed.z += cos(ph * 0.7) * hgt * 0.08;
+          vTip = aTip;
+          float tt = aTip * aTip;
+          // порывы ветра волнами по полю
+          float gust = sin(uTime * 0.9 + ip.x * 0.035 + ip.z * 0.02) * 0.5 + 0.5;
+          float ph = uTime * 2.4 + ip.x * 0.31 + ip.z * 0.23;
+          float sway = (sin(ph) * 0.06 + sin(ph * 2.3 + 1.7) * 0.025 + gust * 0.12) * tt;
+          transformed.x += sway * 1.2;
+          transformed.z += sway * 0.5 + cos(ph * 0.8) * 0.03 * tt;
+          // примятие героем
           vec2 toP = ip.xz - uPlayer.xz;
           float pd = length(toP);
-          float push = smoothstep(1.6, 0.2, pd) * hgt;
-          transformed.xz += normalize(toP + vec2(0.001)) * push * 0.8;
-          transformed.y -= push * 0.4;`);
+          float push = smoothstep(1.4, 0.2, pd) * tt;
+          transformed.xz += normalize(toP + vec2(0.001)) * push * 0.45;
+          transformed.y *= 1.0 - push * 0.55;
+          // плавное исчезновение вдали
+          float cd = length(ip.xz - uCam.xz);
+          transformed.y *= smoothstep(uFade, uFade - 25.0, cd);`)
+        ;
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vTip;')
+        .replace('#include <opaque_fragment>', `
+          // просвечивание кончиков на солнце
+          outgoingLight += diffuseColor.rgb * vTip * vTip * 0.22;
+          #include <opaque_fragment>`);
     };
     this.grassMat = m;
-    // Цветы
+    // Цветы: стебель + розетка лепестков
     const fg = [];
-    const petal = new THREE.IcosahedronGeometry(0.08, 0); petal.translate(0, 0.42, 0);
-    const stem = new THREE.CylinderGeometry(0.01, 0.01, 0.42, 3); stem.translate(0, 0.21, 0);
-    fg.push(colorize(stem, (c) => c.setRGB(0.2, 0.45, 0.12)));
-    fg.push(colorize(petal, (c) => c.setRGB(1, 1, 1)));
+    const stem = new THREE.CylinderGeometry(0.008, 0.01, 0.38, 3); stem.translate(0, 0.19, 0);
+    fg.push(colorize(stem, (c) => c.setRGB(0.22, 0.45, 0.14)));
+    for (let k = 0; k < 5; k++) {
+      const p = new THREE.SphereGeometry(0.045, 6, 4); p.scale(1, 0.3, 0.55);
+      p.translate(0.05, 0.4, 0); p.rotateY(k / 5 * Math.PI * 2);
+      fg.push(colorize(p, (c) => c.setRGB(1, 1, 1)));
+    }
+    const ctr = new THREE.SphereGeometry(0.025, 6, 4); ctr.translate(0, 0.41, 0);
+    fg.push(colorize(ctr, (c) => c.setRGB(1, 0.85, 0.2)));
     this.flowerGeo = mergeGeometries(fg);
     this.flowerMat = new THREE.MeshLambertMaterial({ vertexColors: true });
   }
 
-  makeGrassChunk(ci, cj) {
+  makeGrassChunk(ci, cj, near) {
     const T = this.terrain;
     const rnd = mulberry32(ci * 7919 + cj * 104729);
     const x0 = -WORLD_HALF + ci * GCH, z0 = -WORLD_HALF + cj * GCH;
-    const cx = x0 + GCH / 2, cz = z0 + GCH / 2;
-    const B = T.biomeAt(cx, cz);
     const g = new THREE.Group();
-    const density = this.grassDensity;
+    const density = this.grassDensity * (near ? 1.35 : 0.55);
     const count = Math.floor(GCH * GCH * density);
     const mats = [], cols = [];
     const fl = [], flc = [];
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
     const up = new THREE.Vector3(0, 1, 0);
-    const c = new THREE.Color();
-    const flowerCols = [[1, 0.85, 0.2], [0.95, 0.3, 0.35], [0.6, 0.45, 1], [1, 1, 1], [0.3, 0.6, 1]];
+    const c = new THREE.Color(), tc = new THREE.Color();
+    const flowerCols = [[1, 0.85, 0.2], [0.95, 0.3, 0.35], [0.6, 0.45, 1], [1, 1, 1], [0.3, 0.6, 1], [1, 0.55, 0.15]];
     for (let i = 0; i < count; i++) {
       const x = x0 + rnd() * GCH, z = z0 + rnd() * GCH;
       const bb = T.biomeAt(x, z);
@@ -448,17 +573,21 @@ export class Vegetation {
       if (inCity) continue;
       const nrm = T.normalAt(x, z);
       if (nrm.y < 0.8) continue;
-      const sc = 0.7 + rnd() * 0.7;
+      const sc = 0.75 + rnd() * 0.6;
       q.setFromAxisAngle(up, rnd() * 6.28);
-      s.set(sc, sc * (0.8 + rnd() * 0.6), sc);
-      p.set(x, h - 0.03, z);
+      s.set(sc, sc * (0.7 + rnd() * 0.75), sc);
+      p.set(x, h - 0.04, z);
       m4.compose(p, q, s);
       mats.push(m4.clone());
+      // цвет травы смешан с цветом земли под ней — без резкой границы
+      T.colorAt(x, z, tc);
       const gc = bb.grass;
-      const v = 0.95 + rnd() * 0.35;
-      c.setRGB(gc[0] * v * 1.15, gc[1] * v * 1.1, gc[2] * v).convertSRGBToLinear();
+      const v = 0.85 + rnd() * 0.35;
+      c.setRGB(gc[0] * v * 1.1, gc[1] * v * 1.08, gc[2] * v * 0.95).convertSRGBToLinear();
+      c.lerp(tc, 0.35);
+      if (rnd() < 0.08) c.multiplyScalar(1.25).lerp(new THREE.Color(0.55, 0.5, 0.18), 0.3); // сухие пучки
       cols.push(c.clone());
-      if (bb.id <= 1 && rnd() < 0.035) {
+      if (bb.id <= 1 && rnd() < (near ? 0.03 : 0.012)) {
         p.set(x + 0.3, h, z + 0.2); s.setScalar(0.8 + rnd() * 0.6); m4.compose(p, q, s);
         fl.push(m4.clone());
         const fc = flowerCols[Math.floor(rnd() * flowerCols.length)];
@@ -466,7 +595,7 @@ export class Vegetation {
       }
     }
     if (mats.length) {
-      const im = new THREE.InstancedMesh(this.grassGeo, this.grassMat, mats.length);
+      const im = new THREE.InstancedMesh(near ? this.grassGeoNear : this.grassGeoFar, this.grassMat, mats.length);
       mats.forEach((m, k) => { im.setMatrixAt(k, m); im.setColorAt(k, cols[k]); });
       im.receiveShadow = true;
       im.computeBoundingSphere();
@@ -478,21 +607,24 @@ export class Vegetation {
       im.computeBoundingSphere();
       g.add(im);
     }
-    void B;
+    g.userData.near = near;
     return g;
   }
 
   update(dt, camPos, playerPos) {
     windUniforms.uTime.value += dt;
-    if (this.playerUniform) this.playerUniform.value.copy(playerPos);
+    this.playerUniform.value.copy(playerPos);
+    this.camUniform.value.copy(playerPos);
+    this.grassFade.value = this.grassDist;
     // видимость чанков деревьев
     for (const ch of this.chunks) {
       const d = Math.hypot(ch.userData.cx - camPos.x, ch.userData.cz - camPos.z);
       ch.visible = d < this.treeDist;
     }
-    // ленивые чанки травы
+    // ленивые чанки травы: рядом — густая, дальше — реже
     const nG = Math.ceil((WORLD_HALF * 2) / GCH);
     const R = this.grassDist;
+    const NEAR = 48;
     const pci = Math.floor((playerPos.x + WORLD_HALF) / GCH), pcj = Math.floor((playerPos.z + WORLD_HALF) / GCH);
     const rad = Math.ceil(R / GCH);
     let built = 0;
@@ -500,10 +632,14 @@ export class Vegetation {
       const ci = pci + di, cj = pcj + dj;
       if (ci < 0 || cj < 0 || ci >= nG || cj >= nG) continue;
       const cx = -WORLD_HALF + (ci + 0.5) * GCH, cz = -WORLD_HALF + (cj + 0.5) * GCH;
-      if (Math.hypot(cx - playerPos.x, cz - playerPos.z) > R) continue;
+      const d = Math.hypot(cx - playerPos.x, cz - playerPos.z);
+      if (d > R) continue;
       const key = ci * 1000 + cj;
-      if (!this.grassChunks.has(key) && built < 2) {
-        const g = this.makeGrassChunk(ci, cj);
+      const near = d < NEAR;
+      const ex = this.grassChunks.get(key);
+      if ((!ex || (near && !ex.userData.near)) && built < 2) {
+        if (ex) { this.group.remove(ex); ex.children.forEach(m => m.dispose && m.dispose()); }
+        const g = this.makeGrassChunk(ci, cj, near);
         g.userData.cx = cx; g.userData.cz = cz;
         this.group.add(g);
         this.grassChunks.set(key, g);

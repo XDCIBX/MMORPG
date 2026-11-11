@@ -51,7 +51,8 @@ export class Mob extends Entity {
   ensureModel() {
     if (this.model) return;
     const def = this.isBoss ? Object.assign({}, this.def, { model: this.bossDef.model, fur: this.bossDef.fur, fur2: this.bossDef.fur2, eye: this.bossDef.eye }) : this.def;
-    if (this.elite && this.def.model === 'wolf') { def.fur = '#3a3a44'; def.fur2 = '#1a1a22'; def.eye = '#80a0ff'; }
+    if (this.elite && this.def.model === 'wolf') { def.fur = '#3a3a44'; def.fur2 = '#22222a'; def.belly = '#2a2a32'; def.eye = '#80a0ff'; }
+    if (this.isBoss) def.belly = this.bossDef.fur;
     this.model = buildCreature(def);
     this.model.root.scale.setScalar(this.scale * (this.model.spec ? this.model.spec.scale || 1 : 1));
     this.game.scene.add(this.model.root);
@@ -70,10 +71,18 @@ export class Mob extends Entity {
   centerY() { return this.pos.y + (this.model ? this.model.headTop() * 0.55 : 1); }
   headY() { return this.pos.y + (this.model ? this.model.headTop() : 2); }
 
+  // ближайший призванный союзник игрока (мобы в первую очередь бьют питомцев)
+  nearestAlly(maxD = 30) {
+    let best = null, bd = maxD;
+    for (const a of this.game.allies.list) { if (!a.alive) continue; const d = this.distTo(a); if (d < bd) { bd = d; best = a; } }
+    return best;
+  }
   aggro(src, force = false) {
     if (!this.alive || !src || !src.alive) return;
     if (this.state === 'return' && !force) return;
-    if (!this.target || force || !this.target.alive || (src === this.game.player && this.target !== src && Math.random() < 0.3)) this.target = src;
+    if (!force && src === this.game.player) { const al = this.nearestAlly(); if (al) src = al; }
+    if (!this.target || force || !this.target.alive || (this.target === this.game.player && src !== this.target)) this.target = src;
+    if (force) this.tauntT = 6;
     if (this.state !== 'chase') {
       this.state = 'chase';
       this.atkT = Math.min(this.atkT, 0.8);
@@ -130,8 +139,8 @@ export class Mob extends Entity {
       if (d < 2) { this.state = 'idle'; this.hp = this.maxHp; this.buffs = []; }
       else { speed = baseSpeed * 1.3; this.moveToward(this.home, speed, dt, false); }
     } else if (this.state === 'chase') {
-      const t = this.target;
-      const leash = this.isBoss ? 45 : 55;
+      let t = this.target;
+      const leash = this.isBoss ? 75 : 95;
       const homeD = Math.hypot(this.home.x - this.pos.x, this.home.z - this.pos.z);
       let inCity = false;
       if (t) for (const c of CITIES) if (Math.hypot(t.pos.x - c.x, t.pos.z - c.z) < c.r + 4) inCity = true;
@@ -141,6 +150,9 @@ export class Mob extends Entity {
         if (alt) this.target = alt;
         else { this.state = 'return'; this.target = null; if (this.isBoss) g.ui.bossDisengage(this); }
       } else {
+        if (this.tauntT > 0) this.tauntT -= dt;
+        else if (t === g.player) { this.retargetT = (this.retargetT || 0) - dt; if (this.retargetT <= 0) { this.retargetT = 0.8; const al = this.nearestAlly(25); if (al) this.target = al; } }
+        t = this.target;
         const d = this.distTo(t);
         const reach = this.ranged ? 15 : this.radius + t.radius + 1.3;
         if (this.casting) {
@@ -444,6 +456,7 @@ export class Ally extends Entity {
     this.offset = Math.random() * Math.PI * 2;
     if (kind === 'spiritwolf') this.model.root.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.75; o.material.emissive = new THREE.Color('#4080c0'); o.material.emissiveIntensity = 0.5; } });
     FX.burst(this.pos.x, this.pos.y + 0.5, this.pos.z, 40, { color: kind === 'spiritwolf' ? ['#80d0ff', '#ffffff'] : ['#60ff80', '#20a040'], speed: 4, up: 3, life: 0.8, size: 0.5 });
+    this.riseT = kind === 'spiritwolf' ? 0 : 1.1; // нежить встаёт из-под земли
   }
   get name() { return this.allyName; }
   onDamaged(src) { if (!this.target && src && src.alive) this.target = src; }
@@ -453,6 +466,13 @@ export class Ally extends Entity {
     const g = this.game, P = g.player;
     this.t += dt;
     if (!this.alive) { this.deathT += dt; this.model.update(dt, { speed: 0 }); return; }
+    if (this.riseT > 0) {
+      this.riseT -= dt;
+      this.model.update(dt, { speed: 0 });
+      this.model.root.position.set(this.pos.x, this.pos.y - Math.max(0, this.riseT) * 1.9 * this.scale, this.pos.z);
+      if (Math.random() < 0.6) FX.emit({ x: this.pos.x + (Math.random() - 0.5) * 1.2, y: this.pos.y + 0.1, z: this.pos.z + (Math.random() - 0.5) * 1.2, vy: 2, vx: (Math.random() - 0.5) * 2, vz: (Math.random() - 0.5) * 2, gravity: 8, life: 0.8, size: 0.35, color: '#4a3a2a', additive: false, alpha: 0.85 });
+      return;
+    }
     if (this.t > this.dur || !P.alive) { this.hp = 0; this.alive = false; this.onDeath(); return; }
     this.updateBuffs(dt);
     let speed = 0;

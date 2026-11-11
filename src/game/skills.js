@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { FX } from '../fx/particles.js';
 import { WEAPON_ANIM } from '../chars/gear.js';
+import { boneMat } from '../chars/materials.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
@@ -65,6 +66,11 @@ export function hitFx(game, name, pos, opts = {}) {
       FX.burst(p.x, p.y, p.z, 26, { color: ['#ff2050', '#a00020'], speed: 4, life: 0.6, size: 0.45 });
       drainStream(game, p, opts.to);
       break;
+    case 'boneshatter':
+      game.effects.shards(p, 9, boneMat('#ece4cc'), 0.16, 7);
+      FX.burst(p.x, p.y, p.z, 30, { color: ['#60ff90', '#e0ffe0', '#205030'], speed: 6, life: 0.55, size: 0.4 });
+      E.flash(p, '#50ff80', 20, 0.3);
+      break;
     case 'bonehit':
       FX.burst(p.x, p.y, p.z, 16, { color: ['#e0e0c0', '#80ff90'], speed: 5, life: 0.4, size: 0.3 });
       break;
@@ -103,7 +109,11 @@ function areaFx(game, name, pos, r, color) {
       for (let i = 0; i < 12; i++) { const a = Math.random() * 6.28, rr = Math.random() * r; FX.burst(p.x + Math.cos(a) * rr, p.y, p.z + Math.sin(a) * rr, 3, { color: '#6a5a40', speed: 4, life: 0.8, size: 0.4, additive: false, alpha: 0.9, gravity: 12, up: 4 }); }
       game.shake(0.5);
       break;
-    case 'whirl': case 'runespin': case 'harvest': {
+    case 'harvest':
+      E.spectralScythe(p, '#40e0d0', r, 0.55, 1.15);
+      E.ringWave(p, '#40e0d0', r, 0.5);
+      break;
+    case 'whirl': case 'runespin': {
       const c = name === 'runespin' ? '#ff8a30' : name === 'harvest' ? '#40e0d0' : '#c0d0ff';
       for (let k = 0; k < 3; k++) E.slashArc(p.clone().setY(p.y + 1), k * 2.1, c, r, 0.35);
       FX.ring(p.x, p.y + 1, p.z, r * 0.8, 36, { color: c, speed: 2, life: 0.5, size: 0.4 });
@@ -152,7 +162,14 @@ function areaFx(game, name, pos, r, color) {
       E.runeDecal(p, '#50c040', r, 4, 0.5);
       for (let i = 0; i < 40; i++) { const a = Math.random() * 6.28, rr = Math.random() * r; FX.emit({ x: p.x + Math.cos(a) * rr, y: p.y + 0.1, z: p.z + Math.sin(a) * rr, vy: 2 + Math.random() * 2, life: 1.0, size: 0.4, color: Math.random() < 0.5 ? '#50c040' : '#a0ff60', drag: 0.9 }); }
       break;
-    case 'plague':
+    case 'plague': {
+      // ядовитое облако клубится и оседает
+      for (let i = 0; i < 26; i++) { const a = Math.random() * 6.28, rr = Math.random() * r; FX.emit({ x: p.x + Math.cos(a) * rr, y: p.y + 0.4 + Math.random(), z: p.z + Math.sin(a) * rr, vx: Math.cos(a) * 0.6, vy: 0.3, vz: Math.sin(a) * 0.6, life: 3 + Math.random(), size: 2.6, color: Math.random() < 0.5 ? '#3a6a10' : '#5a8a20', additive: false, alpha: 0.35, grow: 0.8, drag: 0.97 }); }
+      for (let i = 0; i < 4; i++) E.add(null, 3, () => { if (Math.random() < 0.6) { const a = Math.random() * 6.28, rr = Math.random() * r; FX.emit({ x: p.x + Math.cos(a) * rr, y: p.y + 0.1, z: p.z + Math.sin(a) * rr, vy: 1.2, life: 0.8, size: 0.35, color: '#a0ff50' }); } });
+      E.groundCrack(p, '#70ff30', r * 0.8, 3);
+    }
+    // eslint-disable-next-line no-fallthrough
+    case 'plagueBurst':
       E.ringWave(p, '#90ff50', r, 0.6);
       FX.burst(p.x, p.y + 1, p.z, 40, { color: ['#90ff50', '#406010'], speed: 5, life: 1.2, size: 1.2, drag: 0.9, grow: 1 });
       FX.burst(p.x, p.y + 1, p.z, 20, { color: '#304010', speed: 3, life: 2, size: 2, additive: false, alpha: 0.4, grow: 1.5 });
@@ -271,8 +288,18 @@ export function castSkill(game, P, skill, target) {
       break;
     }
     case 'proj': {
+      if (skill.projectile === 'drain') {
+        // жгуты жизненной силы тянутся от врага к заклинателю
+        game.schedule(strikeDelay, () => {
+          if (!target || !target.alive) return;
+          E.drainBeam(() => (target.alive ? target.center() : null), () => handPos(), skill.color, 1.0);
+          game.schedule(0.35, () => { apply(target, skill.dmg); hitFx(game, 'drain', target.center(), { to: () => P.center() }); E.sphere(P.pos, '#ff3060', 1.1, 0.6, P.model.root); });
+        });
+        break;
+      }
       game.schedule(anim === 'bow' ? 0.42 / P.hasteMul : strikeDelay, () => {
         if (!target || !target.alive) return;
+        if (skill.id === 'n_curse') game.schedule(0.45, () => target.alive && E.sigil(() => (target.alive ? target.center().setY(target.headY ? target.headY() + 0.6 : target.pos.y + 2.5) : null), '#90ff40', skill.curse.dur));
         const from = handPos();
         const speed = skill.projectile === 'fireball' ? 26 : skill.projectile === 'hammer' ? 30 : 42;
         E.projectile(skill.projectile, from, tgtCenter(target), speed, (hp) => {
@@ -307,7 +334,10 @@ export function castSkill(game, P, skill, target) {
     case 'aoeSelf': {
       game.schedule(skill.anim === 'slam' ? 0.45 / P.hasteMul : 0.3 / P.hasteMul, () => {
         areaFx(game, skill.fx, P.pos, skill.radius, skill.color);
-        for (const e of game.combat.enemiesInRadius('player', P.pos.x, P.pos.z, skill.radius)) { apply(e, skill.dmg); hitFx(game, 'slash', e.center()); }
+        for (const e of game.combat.enemiesInRadius('player', P.pos.x, P.pos.z, skill.radius)) {
+          apply(e, skill.dmg); hitFx(game, 'slash', e.center());
+          if (skill.fx === 'harvest') { const c = e.center(); for (let k = 0; k < 10; k++) game.schedule(0.2 + k * 0.04, () => { const to = P.center(); const f = c.clone().lerp(to, k / 10); FX.emit({ x: f.x, y: f.y + Math.sin(k) * 0.3, z: f.z, vx: (to.x - c.x) * 0.8, vy: 0.5, vz: (to.z - c.z) * 0.8, life: 0.5, size: 0.45, color: '#7af8ff' }); }); }
+        }
       });
       break;
     }
@@ -364,7 +394,8 @@ export function castSkill(game, P, skill, target) {
           E.projectile('bigarrow', from, () => to, 70, () => {});
           E.beam(from, to, '#ffffff', 0.08, 0.4);
         } else if (skill.fx === 'scytheline') {
-          for (let i = 0; i < 6; i++) game.schedule(i * 0.05, () => E.slashArc(from.clone().addScaledVector(dir, 3 + i * (len - 3) / 6), Math.atan2(dir.x, dir.z), '#30d0c0', 3, 0.35, 0));
+          E.flyingScythe(from.clone(), to.clone(), '#30e0c8', 0.55);
+          for (let i = 0; i < 6; i++) game.schedule(i * 0.07, () => E.slashArc(from.clone().addScaledVector(dir, 3 + i * (len - 3) / 6), Math.atan2(dir.x, dir.z), '#30d0c0', 3, 0.35, 0));
         } else {
           E.beam(from, to, skill.color, 0.5, 0.6);
         }
@@ -402,6 +433,16 @@ export function castSkill(game, P, skill, target) {
       game.schedule(0.3, () => {
         selfFx(game, skill.fx, P, skill.color);
         if (skill.buff) P.addBuff({ id: skill.id, name: skill.name, icon: skill.icon, color: skill.color, dur: skill.buff.dur, mods: { dmgMul: skill.buff.dmgMul, armorMul: skill.buff.armorMul, dmgTaken: skill.buff.dmgTaken, hasteMul: skill.buff.hasteMul, lifesteal: skill.buff.lifesteal } });
+        if (skill.fx === 'avatar') {
+          E.wings(P.model.j.chest, '#30ffe0', skill.buff.dur);
+          const base = P.model.root.scale.x, dur = skill.buff.dur;
+          E.add(null, dur, (dt, k) => {
+            const sc = base * (1 + 0.18 * Math.min(1, k * dur * 3) * (k > 0.95 ? (1 - k) * 20 : 1));
+            P.model.root.scale.setScalar(sc);
+            if (Math.random() < 0.6) FX.emit({ x: P.pos.x + (Math.random() - 0.5) * 1.2, y: P.pos.y + Math.random() * 0.5, z: P.pos.z + (Math.random() - 0.5) * 1.2, vy: 0.6, life: 1.4, size: 1.3, color: '#0a1414', additive: false, alpha: 0.5, grow: 1 });
+          }, () => P.model.root.scale.setScalar(base));
+          game.shake(0.4);
+        }
         if (skill.taunt) for (const e of game.combat.enemiesInRadius('player', P.pos.x, P.pos.z, skill.taunt)) { e.aggro(P, true); }
         P.recalc();
       });
@@ -474,8 +515,15 @@ export function castSkill(game, P, skill, target) {
         const max = skill.summon === 'skeleton' && skill.max < 10 ? (P.maxMinions || skill.max) : skill.max;
         for (let i = 0; i < skill.count; i++) {
           const a = P.yaw + Math.PI + (i - (skill.count - 1) / 2) * 0.8;
-          const pos = P.pos.clone().add(V(Math.sin(a) * 2.2, 0, Math.cos(a) * 2.2));
-          game.allies.summon(skill.summon, pos, skill.dur, max);
+          const pos = P.pos.clone().add(V(Math.sin(a) * (skill.count > 2 ? 3.2 : 2.4), 0, Math.cos(a) * (skill.count > 2 ? 3.2 : 2.4)));
+          pos.y = game.world.standY(pos.x, pos.z);
+          const kind = skill.summon;
+          // у каждого призыва своё появление
+          if (kind === 'bonegolem') { E.boneSpikes(pos, 3.2, 14, boneMat('#e4dcc4')); E.groundCrack(pos, '#60ff80', 3, 2.2); game.shake(0.5); }
+          else if (kind === 'deathknight') { E.skyBolt(pos, '#50ff90'); E.groundCrack(pos, '#40ff80', 2.6, 2.5); E.pillar(pos, '#30c070', 1.2, 14, 1.0); game.shake(0.7); }
+          else if (kind === 'spiritwolf') { E.runeDecal(pos, '#80d0ff', 2, 1.4, 2); FX.burst(pos.x, pos.y + 0.6, pos.z, 40, { color: ['#80d0ff', '#ffffff'], speed: 3, up: 2, life: 1, size: 0.4 }); }
+          else E.groundCrack(pos, '#50ff80', 1.6, 1.8);
+          game.schedule(kind === 'bonegolem' ? 0.5 : 0.15, () => game.allies.summon(kind, pos, skill.dur, max));
         }
       });
       break;
@@ -485,6 +533,7 @@ export function castSkill(game, P, skill, target) {
         selfFx(game, skill.fx, P, skill.color);
         for (const a of game.allies.list) {
           if (!a.alive) continue;
+          E.lightning(handPos(), a.center(), '#40ff60', 0.4);
           a.addBuff({ id: 'frenzy', dur: skill.buff.dur, mods: { dmgMul: skill.buff.dmgMul } });
           a.hp = a.maxHp;
           game.effects.attachAura(a.model.root, skill.color, skill.buff.dur, 1.0);

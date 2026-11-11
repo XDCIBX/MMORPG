@@ -107,9 +107,9 @@ button { font-family: var(--ui); }
 .trk .p.ok { color: var(--green); }
 
 #hud-bottom { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
-#xpbar { width: 720px; max-width: 90vw; height: 10px; background: #0a080e; border: 1px solid #3a2a4a; border-radius: 5px; overflow: hidden; position: relative; }
-#xpbar > div { height: 100%; background: linear-gradient(90deg, #5a2a9a, #b070ff); box-shadow: 0 0 8px #a060ff; transition: width 0.3s; }
-#xpbar > span { position: absolute; inset: 0; font-size: 9px; display: grid; place-items: center; text-shadow: 0 0 2px #000; }
+#xpbar { width: 720px; max-width: 90vw; height: 16px; background: linear-gradient(180deg, #120c1c, #050308); border: 1px solid #8a6ad0; border-radius: 8px; overflow: hidden; position: relative; box-shadow: 0 0 0 2px rgba(0,0,0,0.75), 0 0 14px rgba(150,90,255,0.35); }
+#xpbar > div { height: 100%; background: linear-gradient(180deg, #e0b8ff 0%, #a660ff 45%, #6a28c8 100%); box-shadow: 0 0 10px #b070ff, inset 0 1px 0 rgba(255,255,255,0.5); transition: width 0.3s; }
+#xpbar > span { position: absolute; inset: 0; font-size: 11px; font-weight: 700; color: #fff; display: grid; place-items: center; text-shadow: 0 0 3px #000, 0 1px 2px #000, 0 0 6px #000; letter-spacing: 0.3px; }
 #skillbar { display: flex; gap: 6px; padding: 8px 10px; align-items: flex-end; }
 .sk { width: 54px; height: 54px; border-radius: 8px; border: 2px solid #4a3a20; position: relative; cursor: pointer; display: grid; place-items: center; font-size: 26px; overflow: hidden; transition: transform 0.08s; box-shadow: inset 0 0 12px rgba(0,0,0,0.8); }
 .sk:hover { border-color: var(--gold); }
@@ -296,8 +296,8 @@ body.touch #hud-tracker { left: calc(8px + env(safe-area-inset-left, 0px)); righ
 body.touch #hud-tracker h3 { display: none; }
 body.touch #menubar { top: 6px; bottom: auto; right: auto; left: 50%; transform: translateX(-50%) scale(0.82); transform-origin: top center; }
 body.touch #hud-bottom { bottom: calc(3px + env(safe-area-inset-bottom, 0px)); }
-body.touch #xpbar { width: 42vw; height: 6px; }
-body.touch #xpbar span { display: none; }
+body.touch #xpbar { width: 46vw; height: 12px; }
+body.touch #xpbar span { font-size: 9px; }
 body.touch #castbar { bottom: 34%; }
 body.touch #notify { top: 28%; }
 body.touch #notify div { font-size: 19px; }

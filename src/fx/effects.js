@@ -266,6 +266,163 @@ export class Effects {
       }
     });
   }
+
+  // ---------- Эффекты некроманта и общие «зрелищные» приёмы ----------
+  // Осколки (кости, камни), разлетающиеся с гравитацией
+  shards(pos, n, mat, size = 0.12, speed = 6) {
+    for (let i = 0; i < n; i++) {
+      const m = new THREE.Mesh(new THREE.ConeGeometry(size * 0.35, size * (1 + Math.random()), 5), mat);
+      m.position.copy(pos);
+      const v = new THREE.Vector3((Math.random() - 0.5) * speed, Math.random() * speed * 0.8 + 1.5, (Math.random() - 0.5) * speed);
+      const rv = new THREE.Vector3(Math.random() * 10, Math.random() * 10, 0);
+      this.add(m, 1.1 + Math.random() * 0.4, (dt, k) => {
+        v.y -= 14 * dt;
+        m.position.addScaledVector(v, dt);
+        m.rotation.x += rv.x * dt; m.rotation.y += rv.y * dt;
+        if (k > 0.75) m.scale.setScalar((1 - k) * 4);
+      });
+    }
+  }
+  // Жгуты похищения жизни от цели к заклинателю
+  drainBeam(fromFn, toFn, color, dur = 0.9) {
+    const strands = [];
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
+    const group = new THREE.Group();
+    for (let i = 0; i < 3; i++) { const m = new THREE.Mesh(new THREE.BufferGeometry(), mat); group.add(m); strands.push({ m, ph: i * 2.1 }); }
+    let t = 0;
+    this.add(group, dur, (dt, k) => {
+      t += dt;
+      const a = fromFn(), b = toFn();
+      if (!a || !b) return true;
+      for (const st of strands) {
+        const mid = a.clone().lerp(b, 0.5);
+        const side = new THREE.Vector3(Math.sin(t * 7 + st.ph), Math.cos(t * 5 + st.ph) * 0.8 + 0.6, Math.cos(t * 7 + st.ph)).multiplyScalar(1.1);
+        const curve = new THREE.QuadraticBezierCurve3(a, mid.add(side), b);
+        st.m.geometry.dispose();
+        st.m.geometry = new THREE.TubeGeometry(curve, 16, 0.045 * (1 - k * 0.5), 5, false);
+        const p = curve.getPoint((t * 1.8 + st.ph * 0.2) % 1);
+        FX.emit({ x: p.x, y: p.y, z: p.z, life: 0.35, size: 0.35, color });
+      }
+      mat.opacity = 0.85 * (k > 0.8 ? (1 - k) * 5 : 1);
+    });
+  }
+  // Гигантская призрачная коса: круговой взмах вокруг точки
+  spectralScythe(center, color, radius, dur = 0.55, turns = 1.2, follow = null) {
+    const g = new THREE.Group();
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0); shape.quadraticCurveTo(radius * 0.55, radius * 0.25, radius, -radius * 0.05);
+    shape.quadraticCurveTo(radius * 0.55, radius * 0.08, 0, -radius * 0.12); shape.closePath();
+    const blade = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    blade.rotation.x = -Math.PI / 2;
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, radius * 0.9, 6), blade.material);
+    handle.rotation.z = Math.PI / 2; handle.position.x = -radius * 0.45;
+    g.add(blade, handle);
+    const trail = new THREE.Mesh(new THREE.RingGeometry(radius * 0.35, radius, 48, 1, 0, Math.PI * 0.6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    trail.rotation.x = -Math.PI / 2;
+    g.add(trail);
+    g.position.copy(center); g.position.y += 1.0;
+    this.add(g, dur, (dt, k) => {
+      if (follow) { g.position.copy(follow.position); g.position.y += 1.0; }
+      g.rotation.y = -k * Math.PI * 2 * turns;
+      trail.rotation.z = 0;
+      const a = k < 0.15 ? k / 0.15 : k > 0.8 ? (1 - k) / 0.2 : 1;
+      blade.material.opacity = 0.85 * a; trail.material.opacity = 0.35 * a;
+      if (Math.random() < 0.8) { const ang = -g.rotation.y; FX.emit({ x: g.position.x + Math.cos(ang) * radius * 0.9, y: g.position.y, z: g.position.z - Math.sin(ang) * radius * 0.9, life: 0.5, size: 0.5, color }); }
+    });
+  }
+  // Летящее лезвие косы вдоль линии
+  flyingScythe(from, to, color, dur = 0.5) {
+    const shape = new THREE.Shape();
+    const R = 2.4;
+    shape.moveTo(0, 0); shape.quadraticCurveTo(R * 0.55, R * 0.3, R, 0); shape.quadraticCurveTo(R * 0.55, R * 0.1, 0, -R * 0.14); shape.closePath();
+    const m = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    const g = new THREE.Group(); g.add(m); m.position.x = -R / 2;
+    g.position.copy(from);
+    this.add(g, dur, (dt, k) => {
+      g.position.lerpVectors(from, to, k);
+      g.rotation.y += dt * 22;
+      for (let i = 0; i < 3; i++) FX.emit({ x: g.position.x + (Math.random() - 0.5), y: g.position.y + (Math.random() - 0.5) * 0.4, z: g.position.z + (Math.random() - 0.5), life: 0.6, size: 0.6, color, vy: 0.4 });
+      m.material.opacity = 0.9 * (1 - Math.pow(k, 4));
+    });
+  }
+  // Печать проклятия над головой цели
+  sigil(targetFn, color, dur) {
+    const g = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.4), new THREE.MeshBasicMaterial({ map: this.runeTex, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    ring.rotation.x = -Math.PI / 2;
+    const skull = new THREE.Group();
+    const sk = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.07, 0.12), sk.material); jaw.position.set(0, -0.14, 0.04);
+    skull.add(sk, jaw);
+    g.add(ring, skull);
+    this.add(g, dur, (dt, k) => {
+      const p = targetFn();
+      if (!p) return true;
+      g.position.copy(p);
+      ring.rotation.z += dt * 2;
+      skull.position.y = 0.35 + Math.sin(k * dur * 3) * 0.08;
+      skull.rotation.y += dt * 1.5;
+      const a = k > 0.9 ? (1 - k) * 10 : Math.min(1, k * dur * 4);
+      ring.material.opacity = a; sk.material.opacity = 0.8 * a;
+    });
+  }
+  // Костяные шипы, вырывающиеся из земли по кругу
+  boneSpikes(center, radius, n, mat) {
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2 + Math.random() * 0.3;
+      const r = radius * (0.5 + Math.random() * 0.5);
+      const h = 1.2 + Math.random() * 1.5;
+      const m = new THREE.Mesh(new THREE.ConeGeometry(0.16, h, 6), mat);
+      m.position.set(center.x + Math.cos(a) * r, center.y - h / 2, center.z + Math.sin(a) * r);
+      m.rotation.set(Math.cos(a) * 0.35, 0, -Math.sin(a) * 0.35);
+      const delay = i * 0.04;
+      this.add(m, 1.4 + delay, (dt, k) => {
+        const t = k * (1.4 + delay) - delay;
+        if (t < 0) return;
+        const up = t < 0.15 ? t / 0.15 : t > 1.0 ? Math.max(0, 1 - (t - 1.0) / 0.3) : 1;
+        m.position.y = center.y - h / 2 + up * h * 0.95;
+        if (t < 0.05) FX.burst(m.position.x, center.y + 0.1, m.position.z, 4, { color: '#5a4a3a', speed: 3, up: 3, life: 0.6, size: 0.4, additive: false, alpha: 0.8, gravity: 10 });
+      });
+    }
+  }
+  // Удар молнии с неба
+  skyBolt(pos, color) {
+    const top = pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 4, 28, (Math.random() - 0.5) * 4));
+    this.lightning(top, pos.clone().setY(pos.y + 0.2), color, 0.45);
+    this.ringWave(pos, color, 5, 0.6);
+    this.flash(pos.clone().setY(pos.y + 3), color, 80, 0.5, 30);
+  }
+  // Земля трескается: тёмный круг с мерцающими трещинами
+  groundCrack(pos, color, r = 2, dur = 2) {
+    const m = new THREE.Mesh(new THREE.CircleGeometry(r, 24), new THREE.MeshBasicMaterial({ color: '#0a0806', transparent: true, opacity: 0.75, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2; m.position.copy(pos); m.position.y += 0.08;
+    this.add(m, dur, (dt, k) => { m.material.opacity = 0.75 * (k > 0.7 ? (1 - k) / 0.3 : 1); m.scale.setScalar(Math.min(1, k * 8)); });
+    this.runeDecal(pos, color, r * 1.15, dur, 1.5);
+    FX.burst(pos.x, pos.y + 0.2, pos.z, 18, { color: '#4a3a2a', speed: 3, up: 3.5, life: 0.9, size: 0.45, additive: false, alpha: 0.85, gravity: 9 });
+  }
+  // Призрачные крылья на спине (Аватар Смерти)
+  wings(chestObj, color, dur) {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const ws = [];
+    for (const sx of [-1, 1]) {
+      const shape = new THREE.Shape();
+      shape.moveTo(0, 0); shape.lineTo(1.3, 0.9); shape.lineTo(1.6, 0.2); shape.lineTo(1.25, -0.2); shape.lineTo(1.1, -0.85); shape.lineTo(0.7, -0.45); shape.lineTo(0.45, -0.95); shape.lineTo(0.2, -0.4); shape.closePath();
+      const geo = new THREE.ShapeGeometry(shape);
+      if (sx < 0) geo.scale(-1, 1, 1);
+      const w = new THREE.Mesh(geo, mat);
+      const piv = new THREE.Group(); piv.add(w); piv.position.set(sx * 0.08, 0.2, -0.16);
+      g.add(piv); ws.push({ piv, sx });
+    }
+    chestObj.add(g);
+    let t = 0;
+    this.add(null, dur, (dt, k) => {
+      t += dt;
+      for (const W of ws) W.piv.rotation.y = W.sx * (0.5 + Math.sin(t * 2.5) * 0.25);
+      mat.opacity = 0.55 * (k > 0.9 ? (1 - k) * 10 : Math.min(1, k * dur * 3));
+      if (Math.random() < 0.5) { const p = new THREE.Vector3(); chestObj.getWorldPosition(p); FX.emit({ x: p.x + (Math.random() - 0.5) * 2.4, y: p.y + Math.random() * 1.2, z: p.z + (Math.random() - 0.5) * 1, vy: -0.5, life: 0.8, size: 0.35, color }); }
+    }, () => g.removeFromParent());
+  }
 }
 
 const PROJ_TRAIL = {
@@ -277,7 +434,7 @@ const PROJ_TRAIL = {
   fireball: { rate: 8, jit: 0.25, life: 0.45, size: 0.8, color: ['#ff6010', '#ffb030', '#ffe080'], vy: 0.5 },
   frostbolt: { rate: 5, jit: 0.2, life: 0.5, size: 0.45, color: ['#80d0ff', '#ffffff'] },
   magic: { rate: 4, jit: 0.15, life: 0.4, size: 0.4, color: ['#8080ff', '#c0a0ff'] },
-  bonespear: { rate: 3, jit: 0.1, life: 0.4, size: 0.35, color: ['#80ff90', '#d0ffd0'] },
+  bonespear: { rate: 7, jit: 0.25, life: 0.55, size: 0.45, color: ['#60ff90', '#d0ffd0', '#205030'] },
   bone: { rate: 3, jit: 0.1, life: 0.4, size: 0.3, color: '#90ffa0' },
   shadowbolt: { rate: 6, jit: 0.25, life: 0.6, size: 0.6, color: ['#7020c0', '#200830'], },
   shadow: { rate: 5, jit: 0.2, life: 0.5, size: 0.5, color: ['#6040c0', '#a080ff'] },
@@ -319,10 +476,31 @@ function buildProjectile(kind, color) {
     inner.add(h);
     inner.add(new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 10), glowMat('#80c8ff', 0.25)));
     g.userData.spin = true;
-  } else if (kind === 'bonespear' || kind === 'bone') {
-    const sp = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.8, 6), boneMat('#e8e0c8'));
+  } else if (kind === 'bonespear') {
+    // зазубренное костяное копьё с вращающимися осколками
+    const bm = boneMat('#ece4cc');
+    const sp = new THREE.Mesh(new THREE.ConeGeometry(0.08, 1.3, 7), bm); sp.position.y = 0.1; inner.add(sp);
+    for (let i = 0; i < 4; i++) {
+      const b = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.28, 5), bm);
+      b.position.set(Math.cos(i * 1.57) * 0.07, -0.15 + i * 0.12, Math.sin(i * 1.57) * 0.07);
+      b.rotation.set(Math.sin(i * 1.57) * -0.9, 0, Math.cos(i * 1.57) * 0.9);
+      inner.add(b);
+    }
+    inner.add(new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), glowMat('#50ff80', 0.28)));
+    g.userData.spin = true;
+  } else if (kind === 'bone') {
+    const sp = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.5, 6), boneMat('#e8e0c8'));
     inner.add(sp);
-    inner.add(new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), glowMat('#60ff80', 0.4)));
+    inner.add(new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8), glowMat('#60ff80', 0.35)));
+  } else if (kind === 'curse') {
+    // светящийся череп
+    const sk = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 12), new THREE.MeshBasicMaterial({ color: '#b0ff70' }));
+    sk.scale.set(0.9, 1, 1);
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.08, 0.14), sk.material); jaw.position.set(0, -0.17, 0.05);
+    for (const sx of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), new THREE.MeshBasicMaterial({ color: '#102008' })); e.position.set(sx * 0.07, 0.02, 0.16); inner.add(e); }
+    inner.add(sk, jaw);
+    inner.add(new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), glowMat('#80ff40', 0.3)));
+    inner.rotation.x = -Math.PI / 2;
   } else if (kind === 'frostbolt' || kind === 'frost') {
     const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.2), gemMat('#a0e8ff', 2.5));
     c.scale.set(0.6, 1.8, 0.6); inner.add(c);

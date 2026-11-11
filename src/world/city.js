@@ -137,8 +137,16 @@ export function buildCity(city, terrain, collision, root) {
   const spots = [];
   const animated = [];
   const W = (x, z) => [cx + x, cz + z];
+  // Ворота привязываем ровно к одному сегменту стены, чтобы арка опиралась на две башни
+  const N = 30;
+  const gateSegs = new Set();
+  const gates = city.gates.map(g => {
+    const i = ((Math.round((g / (Math.PI * 2)) * N - 0.5) % N) + N) % N;
+    gateSegs.add(i);
+    return (i + 0.5) / N * Math.PI * 2;
+  });
   const gateHalf = 0.13;
-  const isGateAngle = (a, extra = 0) => city.gates.some(g => { let d = Math.abs(((a - g) % (Math.PI * 2) + Math.PI * 3) % (Math.PI * 2) - Math.PI); return d < gateHalf + extra; });
+  const isGateAngle = (a, extra = 0) => gates.some(g => { let d = Math.abs(((a - g) % (Math.PI * 2) + Math.PI * 3) % (Math.PI * 2) - Math.PI); return d < gateHalf + extra; });
 
   // Мостовая
   const ground = new THREE.CircleGeometry(R + 3, 64);
@@ -150,7 +158,6 @@ export function buildCity(city, terrain, collision, root) {
   gm.receiveShadow = true;
   group.add(gm);
   // Стены и башни
-  const N = 30;
   const wallH = city.style === 'stone' ? 9 : city.style === 'marble' ? 10 : 7;
   const wallMat = M.wallStone;
   for (let i = 0; i < N; i++) {
@@ -158,7 +165,7 @@ export function buildCity(city, terrain, collision, root) {
     const am = (a0 + a1) / 2;
     const [x0, z0] = W(Math.cos(a0) * R, Math.sin(a0) * R);
     const [x1, z1] = W(Math.cos(a1) * R, Math.sin(a1) * R);
-    const gate = isGateAngle(am);
+    const gate = gateSegs.has(i);
     if (!gate) {
       const dx = x1 - x0, dz = z1 - z0, L = Math.hypot(dx, dz);
       const yaw = Math.atan2(-dz, dx);
@@ -182,7 +189,7 @@ export function buildCity(city, terrain, collision, root) {
       }
     }
     // башня в каждой 3-й вершине и у ворот
-    const nextGate = isGateAngle(a1 + 0.1) || isGateAngle(a1 - 0.1);
+    const nextGate = gateSegs.has(i) || gateSegs.has((i + 1) % N);
     if (i % 3 === 0 || nextGate) {
       const [tx, tz] = W(Math.cos(a1) * R, Math.sin(a1) * R);
       const tr = nextGate ? 3.3 : 2.7, th = wallH + (nextGate ? 5 : 3.5);
@@ -207,29 +214,40 @@ export function buildCity(city, terrain, collision, root) {
       collision.addCircle(tx, tz, tr + 0.2);
     }
   }
-  // Ворота: арка
-  for (const g of city.gates) {
-    const [gx, gz] = W(Math.cos(g) * R, Math.sin(g) * R);
-    const yaw = Math.atan2(-Math.cos(g), -Math.sin(g)) + Math.PI / 2;
-    void yaw;
-    const tyaw = Math.atan2(Math.cos(g + Math.PI / 2) * 0 - Math.sin(g) * 0, 1);
-    void tyaw;
-    const ayaw = -g + Math.PI / 2; // поперёк дороги
-    void ayaw;
-    B.add(boxUV(10, 2.4, 2.2, 2), wallMat, M4(gx, cy + wallH + 0.2, gz, Math.atan2(-Math.cos(g), -Math.sin(g))));
-    // решётка-портcullis (поднята)
-    for (let k = -3; k <= 3; k++) B.add(new THREE.BoxGeometry(0.12, 2.0, 0.12), ironMat, M4(gx + Math.sin(g) * k * 0.7 * -1 + 0, cy + wallH - 1.6, gz + Math.cos(g) * k * 0.7, 0));
-    B.add(new THREE.BoxGeometry(0.15, 0.15, 5), ironMat, M4(gx, cy + wallH - 0.8, gz, -g));
+  // Ворота: надвратная арка от башни до башни, открытые створки
+  const chord = 2 * R * Math.sin(Math.PI / N);
+  const gR = R * Math.cos(Math.PI / N);
+  for (const g of gates) {
+    const [gx, gz] = W(Math.cos(g) * gR, Math.sin(g) * gR);
+    const tyaw = Math.atan2(-Math.cos(g), -Math.sin(g)); // ось арки вдоль стены
+    const tx = -Math.sin(g), tz = Math.cos(g); // касательная
+    B.add(boxUV(chord + 0.6, 3.0, 2.4, 2), wallMat, M4(gx, cy + wallH + 0.0, gz, tyaw));
+    // арочный свод
+    const arch = new THREE.TorusGeometry(3.0, 0.45, 8, 20, Math.PI);
+    B.add(arch, M.stone, M4(gx, cy + wallH - 4.4, gz, tyaw, 1, 1, 1.8));
+    // зубцы над воротами
+    for (let k = 0; k < 6; k++) {
+      const t = (k + 0.5) / 6 - 0.5;
+      for (const sd of [-0.75, 0.75]) B.add(boxUV(0.8, 1.0, 0.5, 1), wallMat, M4(gx + tx * t * chord + Math.cos(g) * sd, cy + wallH + 1.9, gz + tz * t * chord + Math.sin(g) * sd, tyaw));
+    }
+    // поднятая решётка
+    for (let k = -3; k <= 3; k++) B.add(new THREE.BoxGeometry(0.12, 1.6, 0.12), ironMat, M4(gx + tx * k * 0.75, cy + wallH - 2.2, gz + tz * k * 0.75, 0));
+    B.add(new THREE.BoxGeometry(0.15, 0.15, 5.4), ironMat, M4(gx, cy + wallH - 1.5, gz, -g));
+    // распахнутые деревянные створки
+    for (const sd of [-1, 1]) {
+      const hx = gx + tx * sd * 2.9 - Math.cos(g) * 0.9, hz = gz + tz * sd * 2.9 - Math.sin(g) * 0.9;
+      B.add(boxUV(2.6, 5.4, 0.22, 1), M.darkWood, M4(hx - Math.cos(g) * 1.2, cy + 2.7, hz - Math.sin(g) * 1.2, tyaw + sd * Math.PI / 2 + Math.PI / 2));
+    }
     // факелы у ворот
     for (const s of [-1, 1]) {
-      const fx = gx - Math.cos(g) * 1.6 + Math.sin(g) * s * 3.4 * -1, fz = gz - Math.sin(g) * 1.6 + Math.cos(g) * s * 3.4;
+      const fx = gx - Math.cos(g) * 1.6 + tx * s * 3.6, fz = gz - Math.sin(g) * 1.6 + tz * s * 3.6;
       B.add(new THREE.CylinderGeometry(0.06, 0.04, 0.8, 6), M.darkWood, M4(fx, cy + 3.3, fz));
       B.add(new THREE.SphereGeometry(0.16, 8, 6), flameMat, M4(fx, cy + 3.8, fz), { noShadow: true });
       animated.push({ type: 'fire', x: fx, y: cy + 3.9, z: fz, small: true });
     }
-    // стражники у ворот (снаружи-внутри)
+    // стражники у ворот
     for (const s of [-1, 1]) {
-      const px = gx - Math.cos(g) * 3 + Math.sin(g) * s * 4.5 * -1, pz = gz - Math.sin(g) * 3 + Math.cos(g) * s * 4.5;
+      const px = gx - Math.cos(g) * 3 + tx * s * 4.5, pz = gz - Math.sin(g) * 3 + tz * s * 4.5;
       spots.push({ role: 'guard', x: px, z: pz, yaw: Math.atan2(Math.cos(g), Math.sin(g)) });
     }
   }
@@ -259,14 +277,14 @@ export function buildCity(city, terrain, collision, root) {
     for (const s of [-0.9, 0.9]) B.add(boxUV(0.12, 0.5, 0.5, 1), M.stone, M4(bx + Math.cos(yaw) * s, cy + 0.27, bz - Math.sin(yaw) * s, yaw));
   }
   // Камень телепортации
-  const tpA = city.gates[0] + Math.PI * 0.25;
+  const tpA = gates[0] + Math.PI * 0.25;
   const tpx = cx + Math.cos(tpA) * 15, tpz = cz + Math.sin(tpA) * 15;
   const tp = buildTeleportStone(B, M, tpx, cy, tpz, animated, city.banner);
   collision.addCircle(tpx, tpz, 1.4);
   spots.push({ role: 'teleport', x: tpx, z: tpz, yaw: 0, obj: tp });
 
   // Особые здания: площадь-знамение напротив главных ворот
-  const landA = city.gates[0] + Math.PI;
+  const landA = gates[0] + Math.PI;
   const lmx = cx + Math.cos(landA) * (R * 0.55), lmz = cz + Math.sin(landA) * (R * 0.55);
   const lyaw = Math.atan2(-Math.cos(landA), -Math.sin(landA));
   buildLandmark(B, M, city, lmx, cy, lmz, lyaw, collision, animated, group);
@@ -274,7 +292,7 @@ export function buildCity(city, terrain, collision, root) {
 
   // Рынок: прилавки по кругу у площади
   const stallCols = ['#b03030', '#2a6ab0', '#c8a030', '#3a8a40', '#8a3aa0'];
-  const marketA = city.gates[0] + Math.PI * 0.55;
+  const marketA = gates[0] + Math.PI * 0.55;
   for (let i = 0; i < 4; i++) {
     const a = marketA + (i - 1.5) * 0.28;
     const sx = cx + Math.cos(a) * 17, sz = cz + Math.sin(a) * 17;
@@ -285,7 +303,7 @@ export function buildCity(city, terrain, collision, root) {
     else if (rnd() < 0.8) spots.push({ role: 'vendorExtra', x: sx - Math.sin(yaw) * 1.6, z: sz - Math.cos(yaw) * 1.6, yaw });
   }
   // Кузница
-  const smA = city.gates[0] + Math.PI * 1.45;
+  const smA = gates[0] + Math.PI * 1.45;
   const smx = cx + Math.cos(smA) * 22, smz = cz + Math.sin(smA) * 22;
   const smyaw = Math.atan2(-Math.cos(smA), -Math.sin(smA));
   forge(B, M, smx, cy, smz, smyaw, animated);
@@ -293,7 +311,7 @@ export function buildCity(city, terrain, collision, root) {
   spots.push({ role: 'smith', x: smx + Math.sin(smyaw) * 3.3, z: smz + Math.cos(smyaw) * 3.3, yaw: smyaw });
 
   // Квестодатели вокруг площади
-  const qa = [city.gates[0] + 0.5, city.gates[0] - 0.55, city.gates[0] + Math.PI - 0.5];
+  const qa = [gates[0] + 0.5, gates[0] - 0.55, gates[0] + Math.PI - 0.5];
   qa.forEach((a, i) => spots.push({ role: 'quest', idx: i, x: cx + Math.cos(a) * 7, z: cz + Math.sin(a) * 7, yaw: Math.atan2(-Math.cos(a), -Math.sin(a)) + Math.PI }));
 
   // Жилые дома
@@ -309,7 +327,7 @@ export function buildCity(city, terrain, collision, root) {
     const rad = Math.hypot(w, d) / 2 + 1.6;
     if (occupied.some(o => Math.hypot(o.x - hx, o.z - hz) < o.r + rad)) continue;
     // улицы к воротам
-    if (city.gates.some(g => { const da = Math.abs(Math.atan2(Math.sin(a - g), Math.cos(a - g))); return da * rr < 5 + rad; })) continue;
+    if (gates.some(g => { const da = Math.abs(Math.atan2(Math.sin(a - g), Math.cos(a - g))); return da * rr < 5 + rad; })) continue;
     if (rr + rad > R - 2) continue;
     const yaw = Math.atan2(-Math.cos(a), -Math.sin(a));
     const floors = rnd() < 0.55 ? 2 : (rnd() < 0.5 ? 1 : 3);
@@ -326,7 +344,7 @@ export function buildCity(city, terrain, collision, root) {
     if (rnd() < 0.3) spots.push({ role: 'citizen', x: hx + Math.sin(yaw) * (d / 2 + 2.5), z: hz + Math.cos(yaw) * (d / 2 + 2.5), yaw });
   }
   // Фонари вдоль улиц
-  for (const g of city.gates) {
+  for (const g of gates) {
     for (let k = 1; k <= 3; k++) {
       for (const s of [-1, 1]) {
         const rr = 12 + k * (R - 16) / 4;

@@ -293,7 +293,7 @@ export class Game {
     // при движении с зажатой ПКМ персонаж поворачивается за камерой (как в MMO)
     if (inp.mouse[2] && P.moveSpeed !== 0) P.yaw = c.yaw;
     const h = P.model.headTop ? P.model.headTop() : 1.8;
-    const target = new THREE.Vector3(P.pos.x, P.pos.y + h * 0.92 + P.jumpOffset, P.pos.z);
+    const target = new THREE.Vector3(P.pos.x, P.pos.y + h * 0.92 + P.jumpOffset + (P.mounted ? P.mount.seatY * 0.75 : 0), P.pos.z);
     c.look.lerp(target, Math.min(1, dt * 14));
     if (c.look.lengthSq() === 0 || c.look.distanceTo(target) > 20) c.look.copy(target);
     const cp = Math.cos(c.pitch), sp = Math.sin(c.pitch);

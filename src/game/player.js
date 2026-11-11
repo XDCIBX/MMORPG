@@ -7,6 +7,7 @@ import { CLASSES, BRANCH_LEVEL, xpNeeded } from '../data/classes.js';
 import { SLOTS, starterKit, makePotion } from '../data/items.js';
 import { castSkill, levelUpFx, hitFx } from './skills.js';
 import { FX } from '../fx/particles.js';
+import { buildMount } from '../chars/beasts.js';
 import { clamp, angleLerp } from '../core/util.js';
 
 const BAG_SIZE = 40;
@@ -255,6 +256,7 @@ export class Player extends Entity {
     this.finishSkill(s, target);
   }
   finishSkill(s, target) {
+    this.dismount();
     this.res -= this.skillCost(s);
     this.cooldowns[s.id] = s.cd;
     this.gcd = 0.5;
@@ -336,7 +338,7 @@ export class Player extends Entity {
       dx /= len; dz /= len;
       if (this.casting) { this.casting = null; g.ui.error('Заклинание прервано'); }
       const back = !joy && mz < 0 && mx === 0;
-      speed = this.speed * (this.slowT > 0 ? 0.6 : 1) * (swimming ? 0.65 : 1) * (back ? 0.6 : 1) * (joy ? (joyMag < 0.6 ? 0.45 : 1) : 1);
+      speed = this.speed * (this.mounted ? 1.95 : 1) * (this.slowT > 0 ? 0.6 : 1) * (swimming ? 0.65 : 1) * (back ? 0.6 : 1) * (joy ? (joyMag < 0.6 ? 0.45 : 1) : 1);
       const targetYaw = back ? Math.atan2(-dx, -dz) : Math.atan2(dx, dz);
       this.yaw = angleLerp(this.yaw, targetYaw, Math.min(1, dt * 12));
       const nx = this.pos.x + dx * speed * dt, nz = this.pos.z + dz * speed * dt;
@@ -348,6 +350,9 @@ export class Player extends Entity {
       this.pos.x = clamp(this.pos.x, -770, 770); this.pos.z = clamp(this.pos.z, -770, 770);
       this.moveSpeed = back ? -speed : speed;
     } else this.moveSpeed = 0;
+    // ездовое животное
+    if (inp.pressed('KeyG')) this.toggleMount();
+    if (this.mounted && swimming) this.dismount();
     // прыжок и гравитация
     if (inp.pressed('Space') && this.onGround && canMove && !swimming) { this.vy = 7.5; this.onGround = false; }
     const gy = g.world.standY(this.pos.x, this.pos.z);
@@ -359,7 +364,15 @@ export class Player extends Entity {
     } else {
       this.pos.y = floor;
     }
-    if (swimming && Math.random() < dt * 6 && speed > 0) FX.emit({ x: this.pos.x, y: 0.1, z: this.pos.z, vy: 0.5, life: 0.8, size: 0.8, color: '#e0f0ff', alpha: 0.4 });
+    // круги и брызги на воде
+    if (gy < 0.15 && this.pos.y < 0.4) {
+      this.rippleT = (this.rippleT || 0) - dt;
+      if (this.rippleT <= 0 && (speed > 0 || Math.random() < dt * 1.5)) {
+        this.rippleT = speed > 0 ? 0.28 : 1.2;
+        g.effects.ringWave(new THREE.Vector3(this.pos.x, 0.02, this.pos.z), '#d8ecff', speed > 0 ? 1.8 : 1.2, 1.1, 0.02);
+        if (speed > 0) FX.burst(this.pos.x, 0.15, this.pos.z, 6, { color: '#e8f4ff', speed: 2.2, up: 1.6, life: 0.5, size: 0.18, gravity: 9, alpha: 0.8 });
+      }
+    }
     // лава
     if (g.world.terrain.isLava(this.pos.x, this.pos.z) && this.pos.y < 1) {
       this.lavaT = (this.lavaT || 0) + dt;
@@ -404,20 +417,72 @@ export class Player extends Entity {
       const a = Math.random() * Math.PI * 2;
       FX.emit({ x: this.pos.x + Math.cos(a) * 0.5, y: this.pos.y + 0.2 + Math.random() * 1.5, z: this.pos.z + Math.sin(a) * 0.5, vy: 0.6, life: 1.2, size: 0.18, color: col, alpha: 0.8 });
     }
+    // призыв скакуна
+    if (this.mountCast) {
+      this.mountCast -= dt;
+      if (speed > 0 || this.engaged && g.target && g.target.alive) { this.mountCast = 0; g.ui.error('Призыв прерван'); }
+      else if (this.mountCast <= 0) this.mountUp();
+    }
     // модель
-    this.model.update(dt, { speed: this.moveSpeed, runSpeed: this.speed, airborne: !this.onGround || this.jumpOffset > 0.3 });
+    this.model.update(dt, { speed: this.mounted ? 0 : this.moveSpeed, runSpeed: this.speed, airborne: !this.mounted && (!this.onGround || this.jumpOffset > 0.3), mounted: this.mounted, mountSpeed: Math.abs(this.moveSpeed) });
+    if (this.mounted) this.mount.update(dt, { speed: this.moveSpeed });
     animateGear(this.model, g.time);
     this.syncModel();
   }
 
   syncModel() {
     const r = this.model.root;
+    if (this.mounted) {
+      const m = this.mount;
+      m.root.position.set(this.pos.x, this.pos.y + this.jumpOffset, this.pos.z);
+      m.root.rotation.y = this.yaw;
+      const bob = (m.torso.position.y - m.bodyH) * m.root.scale.y;
+      const fwd = 0.06;
+      r.position.set(this.pos.x + Math.sin(this.yaw) * fwd, this.pos.y + this.jumpOffset + m.seatY + bob - this.model.hipY * r.scale.y + 0.06, this.pos.z + Math.cos(this.yaw) * fwd);
+      r.rotation.y = this.yaw;
+      return;
+    }
     r.position.set(this.pos.x, this.pos.y + this.jumpOffset, this.pos.z);
     r.rotation.y = this.yaw;
   }
 
+  // ---------- Ездовое животное ----------
+  toggleMount() {
+    const g = this.game;
+    if (this.mounted) { this.dismount(); return; }
+    if (this.mountCast > 0) return;
+    if (g.mobs.engagedCount > 0) { g.ui.error('Нельзя призвать скакуна в бою'); return; }
+    if (g.world.standY(this.pos.x, this.pos.z) < -1) { g.ui.error('Нельзя призвать скакуна в воде'); return; }
+    this.mountCast = 1.2;
+    this.casting = null;
+    this.model.playAction('cast2', 1.2);
+    g.effects.runeDecal(this.pos.clone(), '#ffd860', 2.4, 1.4, 2);
+    g.ui.castInfo = { name: 'Призыв скакуна', t0: g.time, dur: 1.2 };
+  }
+  mountUp() {
+    const g = this.game;
+    this.mount = buildMount(this.cls);
+    g.scene.add(this.mount.root);
+    this.mounted = true;
+    FX.burst(this.pos.x, this.pos.y + 0.8, this.pos.z, 40, { color: ['#ffe8a0', '#ffffff'], speed: 4, up: 2, life: 0.8, size: 0.4 });
+    FX.burst(this.pos.x, this.pos.y + 0.3, this.pos.z, 16, { color: '#9a8a70', speed: 3, life: 1, size: 1, additive: false, alpha: 0.5, grow: 1 });
+    g.ui.log(`Вы призвали скакуна: ${this.mount.mountName}`, '#ffe08a');
+    g.ui.castInfo = null;
+  }
+  dismount() {
+    if (!this.mounted) return;
+    const g = this.game;
+    this.mounted = false;
+    FX.burst(this.pos.x, this.pos.y + 0.8, this.pos.z, 30, { color: ['#ffe8a0', '#ffffff'], speed: 3, up: 1.5, life: 0.6, size: 0.35 });
+    this.mount.root.removeFromParent();
+    this.mount = null;
+    this.syncModel();
+    void g;
+  }
+
   autoAttack(tgt) {
     const g = this.game;
+    this.dismount();
     const wt = this.model.weaponType || 'none';
     const anim = WEAPON_ANIM[wt] || 'thrust';
     this.model.playAction(anim, this.hasteMul * 1.1);
@@ -452,12 +517,14 @@ export class Player extends Entity {
   }
 
   onDamaged(src) {
+    if (this.mounted && src) { this.dismount(); this.game.ui.log('Вас сбили со скакуна!', '#ff8a6a'); }
     if (this.C.resource === 'Ярость') this.res = Math.min(this.maxRes, this.res + 4);
     if (this.casting && Math.random() < 0.15) { this.casting.t -= 0.2; }
     if (src && src.alive && (!this.game.target || !this.game.target.alive) && src.team === 'enemy') { this.game.setTarget(src); }
     this.game.ui.flashDamage();
   }
   onDeath() {
+    this.dismount();
     this.model.die();
     this.casting = null;
     this.engaged = false;

@@ -140,7 +140,7 @@ export const CLASSES = {
       reaper: { name: 'Жнец Душ', desc: 'Сама Смерть с косой. +20% урона умений, 5% вампиризма.', color: '#40e0d0', passive: { dmgMul: 1.2, lifesteal: 0.05 } },
     },
     skills: [
-      { id: 'n_bone', name: 'Костяная стрела', icon: '🦴', color: '#e0e0c0', lvl: 1, type: 'proj', range: 26, dmg: 1.35, cost: 9, cd: 1.6, anim: 'cast', projectile: 'bonespear', fx: 'bonehit', desc: 'Острый осколок кости.' },
+      { id: 'n_bone', name: 'Костяная стрела', icon: '🦴', color: '#e0e0c0', lvl: 1, type: 'proj', range: 26, dmg: 1.35, cost: 9, cd: 1.6, anim: 'cast', projectile: 'bonespear', fx: 'boneshatter', desc: 'Зазубренное костяное копьё, разлетающееся осколками.' },
       { id: 'n_raise', name: 'Поднять скелета', icon: '💀', color: '#d0ffd0', lvl: 3, type: 'summon', summon: 'skeleton', count: 1, max: 3, dur: 90, cost: 25, cd: 5, anim: 'cast2', fx: 'summondark', desc: 'Поднимает скелета-воина (до 3).' },
       { id: 'n_curse', name: 'Проклятие тлена', icon: '☠', color: '#80ff40', lvl: 6, type: 'proj', range: 26, dmg: 0.5, cost: 18, cd: 12, anim: 'cast', projectile: 'curse', dot: { dmg: 2.2, dur: 10, color: '#80ff40' }, curse: { vuln: 1.25, weak: 0.75, dur: 10 }, fx: 'poison', desc: 'Цель получает +25% урона и слабеет.' },
       { id: 'n_tap', name: 'Похищение жизни', icon: '♥', color: '#e02040', lvl: 10, type: 'proj', range: 24, dmg: 1.6, lifesteal: 0.6, cost: 20, cd: 8, anim: 'cast', projectile: 'drain', fx: 'drain', desc: 'Крадёт здоровье врага.' },

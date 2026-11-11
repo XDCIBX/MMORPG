@@ -172,12 +172,14 @@ const SLOT_BUILDERS = {
       const len = d.hipY - 0.06;
       const robe = new THREE.Group();
       h.j.hips.add(robe); L.push(robe);
-      const rp = add(h, L, latheGeo([[0.36, -len], [0.32, -len * 0.75], [0.25, -len * 0.4], [0.18, -0.08], [0.16, 0.06]], 22), P, robe);
+      const prof = [];
+      for (let k = 0; k <= 10; k++) { const t = k / 10; prof.push([0.39 - 0.23 * Math.pow(t, 0.8), -len + t * (len + 0.06)]); }
+      const rp = add(h, L, latheGeo(prof, 36), P, robe);
       rp.scale.z = 0.85 * D;
-      const hem = add(h, L, latheGeo([[0.365, -len], [0.36, -len + 0.08]], 22), clothMat(v.c2, 2), robe);
+      const hem = add(h, L, latheGeo([[0.395, -len], [0.392, -len + 0.03], [0.378, -len + 0.09]], 36), clothMat(v.c2, 2), robe);
       hem.scale.z = 0.85 * D;
-      // разрез спереди — полоса отделки
-      add(h, L, new THREE.BoxGeometry(0.07, len, 0.01), clothMat(v.c2, 2), robe, 0, -len / 2, 0.22 * D).rotation.x = -0.18;
+      // мантия деформируется ногами — запоминаем исходную форму
+      for (const m of [rp, hem]) { m.geometry = m.geometry.clone(); m.userData.base = Float32Array.from(m.geometry.attributes.position.array); }
       h.robe = robe;
       // кушак
       const sash = add(h, L, new THREE.BoxGeometry(0.06, 0.4, 0.01), clothMat(v.c2), h.j.spine, 0.06, -0.2, 0.12 * D);
@@ -383,9 +385,9 @@ export function buildWeapon(type, v) {
       A(new THREE.CylinderGeometry(0.02, 0.024, hl, 8), woodMat(), 0, hl / 2 - 0.12, 0);
       const s = new THREE.Shape();
       s.moveTo(0, -0.06); s.quadraticCurveTo(0.12, -0.1, 0.2, -0.18); s.quadraticCurveTo(0.26, 0.0, 0.2, 0.18); s.quadraticCurveTo(0.12, 0.1, 0, 0.06); s.closePath();
-      const head = A(extrude(s, 0.02, 0.006), blade, 0.02, hl - 0.2, 0);
-      head.rotation.y = Math.PI / 2;
-      if (v.tier >= 3) { const h2 = A(extrude(s, 0.02, 0.006), blade, -0.02, hl - 0.2, 0); h2.rotation.y = -Math.PI / 2; }
+      const head = A(extrude(s, 0.02, 0.006), blade, 0, hl - 0.2, 0.02);
+      head.rotation.y = -Math.PI / 2;
+      if (v.tier >= 3) { const h2 = A(extrude(s, 0.02, 0.006), blade, 0, hl - 0.2, -0.02); h2.rotation.y = Math.PI / 2; }
       A(new THREE.CylinderGeometry(0.035, 0.035, 0.14, 8), Tm, 0, hl - 0.2, 0);
       if (gem) A(new THREE.OctahedronGeometry(0.03), gem, 0, hl - 0.2, 0.04);
       break;
@@ -450,7 +452,7 @@ export function buildWeapon(type, v) {
       const s = new THREE.Shape();
       s.moveTo(0, 0); s.quadraticCurveTo(0.35, 0.18, 0.75, -0.05); s.quadraticCurveTo(0.4, 0.06, 0, -0.08); s.closePath();
       const bladeM = A(extrude(s, 0.012, 0.004), blade, 0, len - 0.62, 0);
-      bladeM.rotation.y = Math.PI / 2;
+      bladeM.rotation.y = -Math.PI / 2; // лезвие смотрит вперёд
       A(new THREE.SphereGeometry(0.05, 10, 8), boneMat(), 0, len - 0.6, 0);
       if (gem) { A(new THREE.OctahedronGeometry(0.03), gem, 0, len - 0.58, 0.05); A(new THREE.SphereGeometry(0.08, 10, 8), glowMat(v.gem, 0.3), 0, len - 0.6, 0); }
       for (let i = 0; i < 3; i++) A(new THREE.TorusGeometry(0.03, 0.008, 6, 12), boneMat(), 0, 0.2 + i * 0.35, 0).rotation.x = Math.PI / 2;

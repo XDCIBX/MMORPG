@@ -7,7 +7,7 @@ function key(...a) { return a.join('|'); }
 
 export function skinMat(color) {
   const k = key('skin', color);
-  if (!cache.has(k)) cache.set(k, new THREE.MeshStandardMaterial({ color, roughness: 0.62, metalness: 0 }));
+  if (!cache.has(k)) cache.set(k, new THREE.MeshPhysicalMaterial({ color, roughness: 0.55, metalness: 0, sheen: 0.35, sheenRoughness: 0.6, sheenColor: new THREE.Color('#ff9a80') }));
   return cache.get(k);
 }
 export function clothMat(color, pattern = 0) {

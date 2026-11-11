@@ -5,168 +5,20 @@ import { equipVisual, animateGear } from './gear.js';
 import { basicMat, gemMat, glowMat, boneMat, clothMat, metalMat } from './materials.js';
 import { clamp, lerp, smoothstep } from '../core/util.js';
 import { FX } from '../fx/particles.js';
+import { scaleTex, furTex, stoneWall } from '../core/textures.js';
+import { Creature } from './creature_base.js';
+import { Beast } from './beasts.js';
 
+const cmats = new Map();
 function furMat(color, rough = 0.92) {
-  return basicMat(color, rough, 0);
+  const k = 'f' + color + rough;
+  if (!cmats.has(k)) { const f = furTex(); cmats.set(k, new THREE.MeshStandardMaterial({ color, map: f.map, normalMap: f.normalMap, roughness: rough })); }
+  return cmats.get(k);
 }
-
-class Creature {
-  constructor() {
-    this.root = new THREE.Group();
-    this.body = new THREE.Group();
-    this.root.add(this.body);
-    this.meshes = [];
-    this.time = Math.random() * 10;
-    this.phase = Math.random() * 6;
-    this.action = null; this.actionT = 0; this.actionDur = 0.5;
-    this.deadT = -1;
-    this.height = 1;
-  }
-  m(geo, mat, parent, x = 0, y = 0, z = 0) {
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(x, y, z);
-    mesh.castShadow = true;
-    parent.add(mesh);
-    this.meshes.push(mesh);
-    return mesh;
-  }
-  pivot(parent, x = 0, y = 0, z = 0) {
-    const o = new THREE.Object3D();
-    o.position.set(x, y, z);
-    parent.add(o);
-    return o;
-  }
-  playAction(name, speed = 1) { this.action = name; this.actionT = 0; this.actionDur = (name === 'slam' || name === 'cast2' ? 0.8 : 0.5) / speed; }
-  actionP() {
-    if (!this.action) return -1;
-    return this.actionT;
-  }
-  die() { this.deadT = 0; }
-  revive() { this.deadT = -1; this.body.rotation.set(0, 0, 0); this.body.position.set(0, 0, 0); }
-  headTop() { return this.height * this.root.scale.y; }
-  baseUpdate(dt) {
-    this.time += dt;
-    if (this.action) {
-      this.actionT += dt / this.actionDur;
-      if (this.actionT >= 1) this.action = null;
-    }
-    if (this.deadT >= 0) {
-      this.deadT += dt;
-      const k = smoothstep(0, 0.7, this.deadT);
-      this.body.rotation.z = k * Math.PI / 2 * 0.95;
-      this.body.position.y = -k * 0.1;
-    }
-  }
-  // кривая атаки: 0..1..0 с пиком в середине
-  strike() {
-    if (!this.action) return 0;
-    const p = this.actionT;
-    return p < 0.4 ? -smoothstep(0, 0.4, p) * 0.4 : p < 0.6 ? lerp(-0.4, 1, smoothstep(0.4, 0.6, p)) : 1 - smoothstep(0.6, 1, p);
-  }
-}
-
-// ---------- Четвероногие (волк, кабан, медведь) ----------
-class Quadruped extends Creature {
-  constructor(def, kind) {
-    super();
-    this.kind = kind;
-    const fur = furMat(def.fur), fur2 = furMat(def.fur2);
-    const P = kind === 'wolf' ? { len: 0.55, w: 0.2, h: 0.24, leg: 0.36, legT: 0.055, headL: 0.28, neck: 0.25 }
-      : kind === 'boar' ? { len: 0.5, w: 0.27, h: 0.3, leg: 0.24, legT: 0.065, headL: 0.3, neck: 0.12 }
-        : { len: 0.7, w: 0.42, h: 0.45, leg: 0.42, legT: 0.12, headL: 0.3, neck: 0.25 };
-    this.P = P;
-    const legH = P.leg * 2 + 0.04;
-    this.legH = legH;
-    this.height = legH + P.h * 2 + 0.25;
-    const torso = this.pivot(this.body, 0, legH + P.h * 0.4, 0);
-    this.torso = torso;
-    this.m(ellipsoid(P.w, P.h, P.len, 20, 14), fur, torso, 0, 0, 0);
-    // грудь/загривок
-    this.m(ellipsoid(P.w * 1.1, P.h * 1.15, P.len * 0.5, 16, 12), kind === 'boar' ? fur2 : fur, torso, 0, P.h * 0.15, P.len * 0.45);
-    if (kind === 'boar') {
-      for (let i = 0; i < 7; i++) {
-        const c = this.m(new THREE.ConeGeometry(0.035, 0.16, 4), fur2, torso, 0, P.h * 0.95, P.len * (0.5 - i * 0.16));
-        c.rotation.x = -0.4;
-      }
-    }
-    if (kind === 'wolf') this.m(ellipsoid(P.w * 0.9, P.h * 0.75, P.len * 0.35, 14, 10), fur2, torso, 0, -P.h * 0.35, P.len * 0.4);
-    // шея и голова
-    const neck = this.pivot(torso, 0, P.h * 0.35, P.len * 0.8);
-    this.neck = neck;
-    this.m(ellipsoid(P.w * 0.7, P.h * 0.7, P.neck, 12, 10), fur, neck, 0, 0.02, P.neck * 0.4);
-    const head = this.pivot(neck, 0, 0.05, P.neck * 0.9);
-    this.head = head;
-    const hs = kind === 'bear' ? 1.25 : 1;
-    this.m(ellipsoid(0.13 * hs, 0.12 * hs, 0.14 * hs, 16, 12), fur, head, 0, 0, 0.05);
-    const snout = this.m(ellipsoid(0.07 * hs, 0.065 * hs, P.headL * 0.6 * hs, 12, 10), kind === 'wolf' ? fur2 : fur, head, 0, -0.03, P.headL * 0.65 * hs);
-    void snout;
-    this.m(ellipsoid(0.03 * hs, 0.025 * hs, 0.025 * hs), basicMat('#111', 0.3), head, 0, -0.01, P.headL * 1.15 * hs);
-    const jaw = this.pivot(head, 0, -0.07 * hs, 0.05);
-    this.jaw = jaw;
-    this.m(ellipsoid(0.055 * hs, 0.025 * hs, P.headL * 0.5 * hs, 10, 8), fur2, jaw, 0, 0, P.headL * 0.5 * hs);
-    if (kind === 'wolf') for (let i = -1; i <= 1; i += 2) this.m(new THREE.ConeGeometry(0.008, 0.04, 4), boneMat('#fff'), jaw, i * 0.03, 0.025, P.headL * 0.85).rotation.x = Math.PI;
-    const eyeC = def.eye || (kind === 'wolf' ? '#ffcc30' : '#301010');
-    for (const sx of [-1, 1]) {
-      this.m(ellipsoid(0.022, 0.018, 0.015), def.eye ? gemMat(eyeC, 3) : basicMat(eyeC, 0.2), head, sx * 0.07 * hs, 0.04 * hs, 0.14 * hs);
-      // уши
-      const ear = this.m(new THREE.ConeGeometry(kind === 'bear' ? 0.045 : 0.04, kind === 'wolf' ? 0.12 : 0.07, 6), fur, head, sx * 0.07 * hs, 0.12 * hs, -0.01);
-      ear.rotation.z = sx * -0.25;
-      if (kind === 'bear') ear.scale.y = 0.6;
-      if (kind === 'boar') {
-        const tusk = this.m(new THREE.ConeGeometry(0.018, 0.12, 6), boneMat('#f0e8d0'), head, sx * 0.06, -0.04, P.headL * 1.0);
-        tusk.rotation.x = -0.9; tusk.rotation.z = sx * 0.3;
-      }
-    }
-    // хвост
-    const tail = this.pivot(torso, 0, P.h * 0.4, -P.len * 0.95);
-    this.tail = tail;
-    if (kind === 'wolf') {
-      const tg = ellipsoid(0.07, 0.07, 0.3, 10, 8);
-      this.m(tg, fur, tail, 0, -0.08, -0.25).rotation.x = 0.5;
-      this.m(ellipsoid(0.05, 0.05, 0.12), fur2, tail, 0, -0.2, -0.48).rotation.x = 0.5;
-    } else {
-      this.m(ellipsoid(0.04, 0.04, 0.1), fur, tail, 0, 0, -0.05);
-    }
-    // ноги
-    this.legs = [];
-    const lx = P.w * 0.62, lz = P.len * 0.7;
-    for (const [sx, sz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
-      const hip = this.pivot(this.body, sx * lx, legH, sz * lz);
-      this.m(limbGeo(P.leg + 0.05, P.legT * (sz < 0 ? 1.6 : 1.35), P.legT, 0.15, 0.3, 10), fur, hip, 0, 0.05, 0);
-      const knee = this.pivot(hip, 0, -P.leg, 0);
-      this.m(limbGeo(P.leg, P.legT * 0.9, P.legT * 0.75, 0.05, 0.3, 8), kind === 'wolf' ? fur2 : fur, knee, 0, 0, 0);
-      this.m(ellipsoid(P.legT * 1.1, P.legT * 0.6, P.legT * 1.5), kind === 'boar' ? basicMat('#1a1410', 0.5) : fur2, knee, 0, -P.leg, P.legT * 0.5);
-      this.legs.push({ hip, knee, sz, sx });
-    }
-  }
-  update(dt, st = {}) {
-    this.baseUpdate(dt);
-    const speed = st.speed || 0;
-    const blend = clamp(Math.abs(speed) / 6, 0, 1.3);
-    this.phase += dt * speed * 1.9;
-    const ph = this.phase;
-    for (const L of this.legs) {
-      const off = (L.sz > 0 ? 0 : Math.PI) + (L.sx > 0 ? 0 : Math.PI * (blend > 0.9 ? 0.15 : 1));
-      const s = Math.sin(ph + off);
-      L.hip.rotation.x = s * 0.55 * blend;
-      L.knee.rotation.x = (L.sz > 0 ? -1 : 1) * Math.max(0, Math.cos(ph + off)) * 0.7 * blend;
-    }
-    this.torso.position.y = this.legH + this.P.h * 0.4 + Math.abs(Math.sin(ph)) * 0.04 * blend + Math.sin(this.time * 2) * 0.008;
-    this.torso.rotation.x = Math.sin(ph * 2) * 0.03 * blend;
-    this.tail.rotation.x = 0.3 + Math.sin(this.time * 3) * 0.1;
-    this.tail.rotation.y = Math.sin(this.time * 2.2 + ph) * 0.3;
-    let headX = Math.sin(this.time * 0.8) * 0.06;
-    let jawX = 0;
-    if (this.action) {
-      const s = this.strike();
-      headX += s * 0.5;
-      jawX = Math.max(0, Math.sin(this.actionT * Math.PI)) * 0.6;
-      this.torso.position.z = s * 0.15;
-    } else this.torso.position.z = 0;
-    if (st.howl) { headX = -0.9; jawX = 0.5; }
-    this.neck.rotation.x = headX;
-    this.jaw.rotation.x = jawX;
-  }
+function scaleMat(color, extra = {}) {
+  const k = 's' + color + JSON.stringify(extra);
+  if (!cmats.has(k)) { const t = scaleTex(); cmats.set(k, new THREE.MeshStandardMaterial(Object.assign({ color, map: t.map, normalMap: t.normalMap, normalScale: new THREE.Vector2(1.5, 1.5), roughness: 0.45, metalness: 0.15 }, extra))); }
+  return cmats.get(k);
 }
 
 // ---------- Паук ----------
@@ -229,7 +81,8 @@ class Spider extends Creature {
 class Golem extends Creature {
   constructor(def) {
     super();
-    const rock = new THREE.MeshStandardMaterial({ color: def.fur, roughness: 0.95, flatShading: true });
+    const st = stoneWall('#9a948a', 'g');
+    const rock = new THREE.MeshStandardMaterial({ color: def.fur, map: st.map, normalMap: st.normalMap, roughness: 0.95, flatShading: true });
     const glow = gemMat(def.fur2 || '#ffaa40', 3);
     this.height = 2.6;
     const torso = this.pivot(this.body, 0, 1.45, 0);
@@ -383,8 +236,8 @@ class Dragon extends Creature {
   constructor(def) {
     super();
     this.def = def;
-    const scale = new THREE.MeshStandardMaterial({ color: def.fur, roughness: 0.55, metalness: 0.15 });
-    const belly = new THREE.MeshStandardMaterial({ color: def.fur2, roughness: 0.6, emissive: def.fur2, emissiveIntensity: 0.12 });
+    const scale = scaleMat(def.fur);
+    const belly = scaleMat(def.fur2, { emissive: def.fur2, emissiveIntensity: 0.12, roughness: 0.6 });
     const horn = boneMat('#2a2220');
     this.height = 2.2;
     const torso = this.pivot(this.body, 0, 1.0, 0);
@@ -558,9 +411,10 @@ function humanoidMob(def, extra = {}) {
 export function buildCreature(def, opts = {}) {
   let c;
   switch (def.model) {
-    case 'wolf': c = new Quadruped(def, 'wolf'); break;
-    case 'boar': c = new Quadruped(def, 'boar'); break;
-    case 'bear': c = new Quadruped(def, 'bear'); break;
+    case 'wolf': c = new Beast(def, 'wolf'); break;
+    case 'boar': c = new Beast(def, 'boar'); break;
+    case 'bear': c = new Beast(def, 'bear'); break;
+    case 'horse': c = new Beast(def, 'horse'); break;
     case 'spider': c = new Spider(def); break;
     case 'golem': c = new Golem(def); break;
     case 'wraith': c = new Wraith(def); break;

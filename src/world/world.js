@@ -181,6 +181,13 @@ export class World {
     this.scene.fog.near = lerp(this.scene.fog.near, fogNear * fm, Math.min(1, dt * 0.5));
     this.scene.fog.far = lerp(this.scene.fog.far, fogFar * fm, Math.min(1, dt * 0.5));
     this.renderer.toneMappingExposure = lerp(0.62, 0.95, day);
+    // освещение воды
+    const wu = this.terrain.waterUniforms;
+    wu.uSunDir.value.copy(lightDir);
+    wu.uSunColor.value.copy(this.sun.color).multiplyScalar(day > 0.02 ? 1.0 : 0.25);
+    wu.uHorizon.value.copy(this.scene.fog.color);
+    wu.uZenith.value.set(day > 0.3 ? '#3a78c8' : '#0a1430').lerp(new THREE.Color('#e89a6a'), dusk * 0.4);
+    wu.uLight.value = lerp(0.25, 1.0, day);
     windowMat.emissiveIntensity = lerp(2.4, 0.25, day);
     // карта окружения для отражений
     if (this.time - this.lastEnv > 20) {

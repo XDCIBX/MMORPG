@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { skinMat, clothMat, leatherMat, gemMat, boneMat, basicMat } from './materials.js';
 import { clamp, lerp, smoothstep } from '../core/util.js';
+import { sculptedHead, faceTexture, buildHair, hairMat, hairCapMat } from './face.js';
 
 // ---------- Геометрические помощники ----------
 const geoCache = new Map();
@@ -67,6 +68,16 @@ function headGeo(type) {
 }
 
 const SKULL_SOCKET = new THREE.MeshBasicMaterial({ color: 0x050505 });
+const eyeMats = new Map();
+function eyeWhiteMat(dark) {
+  const k = 'w' + dark;
+  if (!eyeMats.has(k)) eyeMats.set(k, new THREE.MeshPhysicalMaterial({ color: dark ? '#202020' : '#efeae4', roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05 }));
+  return eyeMats.get(k);
+}
+function irisMatFor(color) {
+  if (!eyeMats.has(color)) eyeMats.set(color, new THREE.MeshPhysicalMaterial({ color, roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.03 }));
+  return eyeMats.get(color);
+}
 
 // ---------- Позы для анимаций (ключевые кадры) ----------
 const R = (x = 0, y = 0, z = 0) => [x, y, z];
@@ -223,9 +234,9 @@ export class Humanoid {
     const trap = this.mesh(ellipsoid(0.15 * W, 0.05, 0.07 * D), this.shirtMat, chest, 0, 0.27, -0.01);
     this.parts.trap = trap;
     // Шея и голова
-    const neckLen = 0.085 * s.neckLen;
+    const neckLen = 0.072 * s.neckLen;
     const neck = this.joint('neck', chest, 0, 0.3, 0.0);
-    this.mesh(limbGeo(neckLen + 0.02, 0.05 * T * (F ? 0.9 : 1.05), 0.056 * T, 0, 0.5, 10), skin, neck, 0, neckLen, 0.0);
+    this.mesh(limbGeo(neckLen + 0.03, 0.056 * T * (F ? 0.88 : 1.08), 0.064 * T * (F ? 0.9 : 1.05), 0, 0.5, 12), skin, neck, 0, neckLen + 0.005, 0.0);
     const head = this.joint('head', neck, 0, neckLen, 0.01);
     this.buildHead(head);
     this.topY = hipY + 0.07 + 0.18 + 0.3 + neckLen + this.headR * 2.15;
@@ -244,11 +255,18 @@ export class Humanoid {
       wr.add(hand);
       this.parts['hand' + side] = hand;
       const hs = isSkel ? 0.8 : 1;
-      this.mesh(ellipsoid(0.034 * hs, 0.048 * hs, 0.02 * hs), skin, hand, 0, -0.045, 0.005);
-      const fing = this.mesh(ellipsoid(0.033 * hs, 0.032 * hs, 0.022 * hs), skin, hand, 0, -0.088, 0.02);
-      fing.rotation.x = 0.7;
-      const th = this.mesh(ellipsoid(0.012, 0.03, 0.012), skin, hand, -sx * 0.03, -0.045, 0.025);
-      th.rotation.z = -sx * 0.5; th.rotation.x = 0.4;
+      this.mesh(ellipsoid(0.036 * hs, 0.046 * hs, 0.019 * hs), skin, hand, 0, -0.045, 0.004);
+      // четыре согнутых пальца из двух фаланг и большой палец
+      for (let f = 0; f < 4; f++) {
+        const fx = (f - 1.5) * 0.017 * hs;
+        const fl = (f === 1 || f === 2 ? 0.03 : 0.026) * hs;
+        const k1 = new THREE.Object3D(); k1.position.set(fx, -0.086 * hs, 0.004); k1.rotation.x = 0.9; hand.add(k1);
+        this.mesh(limbGeo(fl, 0.0085 * hs, 0.0075 * hs, 0, 0.5, 6), skin, k1);
+        const k2 = new THREE.Object3D(); k2.position.set(0, -fl, 0); k2.rotation.x = 1.1; k1.add(k2);
+        this.mesh(limbGeo(fl * 0.85, 0.0075 * hs, 0.0062 * hs, 0, 0.5, 6), skin, k2);
+      }
+      const tb = new THREE.Object3D(); tb.position.set(-sx * 0.026, -0.03, 0.014); tb.rotation.set(0.5, 0, -sx * 0.7); hand.add(tb);
+      this.mesh(limbGeo(0.042, 0.011, 0.008, 0.1, 0.4, 6), skin, tb);
       // точка хвата оружия
       const grip = new THREE.Object3D();
       grip.position.set(0, -0.075, 0.02);
@@ -290,10 +308,20 @@ export class Humanoid {
     const type = s.headType;
     const isSkel = type === 'skull';
     const skin = this.skinMat;
-    const headMesh = this.mesh(headGeo(type), skin, hc);
+    const faceTypes = ['human', 'orc', 'goblin', 'demon', 'lizard', 'bull'];
+    let faceMat = skin;
+    if (faceTypes.includes(type)) {
+      const necroLike = s.eyes && s.eyes.glow && /^#[0-9a-f]{6}$/i.test(s.skin) && new THREE.Color(s.skin).getHSL({}).s < 0.12;
+      faceMat = new THREE.MeshPhysicalMaterial({
+        map: faceTexture(s.skin, s.hair && s.hair.color, s.female, { stubble: !s.female && !s.beard && type === 'human', lips: s.lips, paint: necroLike ? '#2a2a3a' : null }),
+        roughness: 0.55, sheen: 0.35, sheenRoughness: 0.6, sheenColor: new THREE.Color('#ff9a80'),
+      });
+    }
+    this.faceMat = faceMat;
+    const headMesh = this.mesh(faceTypes.includes(type) && type !== 'lizard' && type !== 'bull' ? sculptedHead(type, s.female) : headGeo(type), faceMat, hc);
     headMesh.scale.setScalar(hr);
     if (type === 'yeti') headMesh.scale.multiplyScalar(1.1);
-    const eyeY = hr * 0.12, eyeX = hr * 0.34, eyeZ = hr * 0.74;
+    const eyeY = hr * 0.13, eyeX = hr * 0.29, eyeZ = hr * 0.73;
     if (isSkel) {
       for (const sx of [-1, 1]) {
         this.mesh(ellipsoid(hr * 0.17, hr * 0.17, hr * 0.12), SKULL_SOCKET, hc, sx * eyeX, eyeY, eyeZ + hr * 0.04);
@@ -308,19 +336,14 @@ export class Humanoid {
     }
     // Глаза
     for (const sx of [-1, 1]) {
-      const white = this.mesh(ellipsoid(hr * 0.13, hr * 0.1, hr * 0.1), basicMat(s.eyes.glow ? '#222' : '#f2eee8', 0.3), hc, sx * eyeX, eyeY, eyeZ);
-      void white;
-      const irisMat = s.eyes.glow ? gemMat(s.eyes.color, 3) : basicMat(s.eyes.color, 0.2);
-      this.mesh(ellipsoid(hr * 0.065, hr * 0.065, hr * 0.04), irisMat, hc, sx * eyeX, eyeY, eyeZ + hr * 0.075);
-      if (!s.eyes.glow) this.mesh(ellipsoid(hr * 0.03, hr * 0.03, hr * 0.02), basicMat('#080808', 0.1), hc, sx * eyeX, eyeY, eyeZ + hr * 0.105);
-      // веки
-      const lid = this.mesh(ellipsoid(hr * 0.15, hr * 0.06, hr * 0.11), skin, hc, sx * eyeX, eyeY + hr * 0.08, eyeZ - hr * 0.005);
-      lid.rotation.x = -0.2;
-      // брови
-      if (type === 'human' || type === 'orc') {
-        const brow = this.mesh(ellipsoid(hr * 0.17, hr * 0.035, hr * 0.05), basicMat(s.hair.color || '#222', 0.9), hc, sx * eyeX, eyeY + hr * 0.22, eyeZ + hr * 0.03);
-        brow.rotation.z = sx * (type === 'orc' ? -0.35 : 0.12);
-      }
+      this.mesh(ellipsoid(hr * 0.12, hr * 0.1, hr * 0.1), eyeWhiteMat(s.eyes.glow), hc, sx * eyeX, eyeY, eyeZ);
+      const irisMat = s.eyes.glow ? gemMat(s.eyes.color, 3) : irisMatFor(s.eyes.color);
+      this.mesh(ellipsoid(hr * 0.06, hr * 0.06, hr * 0.03), irisMat, hc, sx * eyeX, eyeY, eyeZ + hr * 0.08);
+      if (!s.eyes.glow) this.mesh(ellipsoid(hr * 0.028, hr * 0.028, hr * 0.015), basicMat('#050505', 0.05), hc, sx * eyeX, eyeY, eyeZ + hr * 0.1);
+      // веко (моргает)
+      const lid = this.mesh(ellipsoid(hr * 0.135, hr * 0.07, hr * 0.112), faceTypes.includes(type) ? skinMat(s.skin) : skin, hc, sx * eyeX, eyeY + hr * 0.06, eyeZ - hr * 0.002);
+      lid.rotation.x = -0.15;
+      (this.lids || (this.lids = [])).push(lid);
       // уши
       const earMesh = this.mesh(ellipsoid(hr * 0.1, hr * 0.24, hr * 0.17), skin, hc, sx * hr * 0.85, -hr * 0.02, -hr * 0.05);
       if (s.ears === 'pointy' || type === 'goblin') {
@@ -330,16 +353,11 @@ export class Humanoid {
         earMesh.position.y = hr * 0.1;
       }
     }
-    // Нос
-    const noseLen = type === 'goblin' ? 2.2 : 1;
-    const nose = this.mesh(ellipsoid(hr * 0.1, hr * 0.22, hr * 0.12 * noseLen), skin, hc, 0, -hr * 0.08, hr * 0.86 + (noseLen - 1) * hr * 0.1);
-    nose.rotation.x = -0.25;
-    this.mesh(ellipsoid(hr * 0.13, hr * 0.07, hr * 0.09), skin, hc, 0, -hr * 0.24, hr * 0.84);
-    // Рот
-    const lips = s.female ? '#a8505a' : (type === 'human' ? '#9a5a50' : '#3a2020');
-    this.mesh(ellipsoid(hr * 0.2, hr * 0.035, hr * 0.05), basicMat(s.lips || lips, 0.5), hc, 0, -hr * 0.42, hr * 0.8);
-    // скулы/подбородок
-    this.mesh(ellipsoid(hr * 0.2, hr * 0.13, hr * 0.12), skin, hc, 0, -hr * 0.68, hr * 0.68);
+    // Нос у гоблина — длинный крючковатый
+    if (type === 'goblin') {
+      const nose = this.mesh(ellipsoid(hr * 0.1, hr * 0.2, hr * 0.3), skinMat(s.skin), hc, 0, -hr * 0.12, hr * 0.98);
+      nose.rotation.x = -0.45;
+    }
     if (type === 'orc' || s.tusks) {
       for (const sx of [-1, 1]) {
         const tusk = this.mesh(new THREE.ConeGeometry(hr * 0.06, hr * 0.32, 6), boneMat('#efe6c8'), hc, sx * hr * 0.24, -hr * 0.42, hr * 0.78);
@@ -381,47 +399,29 @@ export class Humanoid {
         this.mesh(tg, basicMat(hcol, 0.5), hc, sx * hr * 0.55, hr * 0.55, 0);
       }
     }
-    // Волосы
+    // Волосы: кожа головы с текстурой прядей + пряди-ленты
     const hairCol = s.hair && s.hair.color;
+    this.hairMeshes = [];
     if (s.hair && s.hair.style !== 'none' && hairCol) {
-      const hm = basicMat(hairCol, 0.75);
       const style = s.hair.style;
-      const cap = new THREE.SphereGeometry(hr * 1.08, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.52);
-      const capM = this.mesh(cap, hm, hc, 0, hr * 0.06, -hr * 0.05);
-      capM.scale.set(0.9, 1.08, 1.05);
-      capM.rotation.x = -0.22;
-      const back = new THREE.SphereGeometry(hr * 1.06, 18, 10, Math.PI, Math.PI, Math.PI * 0.3, Math.PI * 0.42);
-      const backM = this.mesh(back, hm, hc, 0, 0, -hr * 0.04);
-      backM.scale.set(0.9, 1.1, 1.0);
-      if (style === 'long') {
-        const lh = new THREE.CylinderGeometry(hr * 0.85, hr * 1.0, hr * 2.6, 16, 1, true, Math.PI * 0.5, Math.PI);
-        const l = this.mesh(lh, hm, hc, 0, -hr * 1.1, -hr * 0.12);
-        l.scale.z = 0.7;
+      const cap = new THREE.SphereGeometry(hr * 1.035, 28, 16, 0, Math.PI * 2, 0, Math.PI * 0.5);
+      const capM = this.mesh(cap, hairCapMat(hairCol), hc, 0, hr * 0.06, -hr * 0.05);
+      capM.scale.set(0.88, 1.08, 1.04);
+      capM.rotation.x = -0.45;
+      this.hairMeshes.push(capM);
+      const hg = buildHair(style, hr, s.female, Math.floor((new THREE.Color(hairCol).r * 97 + (s.female ? 3 : 1)) * 10));
+      if (hg) { const hm = this.mesh(hg, hairMat(hairCol), hc); hm.castShadow = true; this.hairMeshes.push(hm); }
+      if (style === 'braids') {
+        const bm = hairCapMat(hairCol);
         for (const sx of [-1, 1]) {
-          const lock = this.mesh(ellipsoid(hr * 0.22, hr * 0.9, hr * 0.25), hm, hc, sx * hr * 0.78, -hr * 0.6, hr * 0.1);
-          lock.rotation.z = sx * 0.08;
+          for (let k = 0; k < 6; k++) this.hairMeshes.push(this.mesh(ellipsoid(hr * 0.12, hr * 0.15, hr * 0.12), bm, hc, sx * hr * 0.72, -hr * (0.35 + k * 0.25), -hr * 0.32));
+          this.mesh(new THREE.TorusGeometry(hr * 0.11, hr * 0.04, 6, 12), basicMat('#d4a83a', 0.3, 1), hc, sx * hr * 0.72, -hr * 1.85, -hr * 0.32).rotation.x = Math.PI / 2;
         }
-      } else if (style === 'ponytail') {
-        this.mesh(ellipsoid(hr * 0.25, hr * 0.25, hr * 0.25), hm, hc, 0, hr * 0.35, -hr * 0.95);
-        const pt = this.mesh(ellipsoid(hr * 0.2, hr * 1.0, hr * 0.2), hm, hc, 0, -hr * 0.5, -hr * 1.15);
-        pt.rotation.x = 0.25;
-      } else if (style === 'braids') {
-        for (const sx of [-1, 1]) {
-          for (let k = 0; k < 5; k++) this.mesh(ellipsoid(hr * 0.13, hr * 0.15, hr * 0.13), hm, hc, sx * hr * 0.7, -hr * (0.4 + k * 0.28), -hr * 0.3);
-          this.mesh(new THREE.TorusGeometry(hr * 0.12, hr * 0.04, 6, 12), basicMat('#d4a83a', 0.3, 1), hc, sx * hr * 0.7, -hr * 1.75, -hr * 0.3).rotation.x = Math.PI / 2;
-        }
-      } else if (style === 'mohawk') {
-        for (let k = 0; k < 6; k++) {
-          const c = this.mesh(new THREE.ConeGeometry(hr * 0.12, hr * 0.5, 5), hm, hc, 0, hr * (1.05 - k * 0.06), hr * (0.5 - k * 0.3));
-          c.rotation.x = -0.4 - k * 0.15;
-        }
-      } else if (style === 'bun') {
-        this.mesh(ellipsoid(hr * 0.35, hr * 0.3, hr * 0.35), hm, hc, 0, hr * 0.6, -hr * 0.8);
       }
     }
     // Борода
     if (s.beard) {
-      const bm = basicMat(s.hair.color || '#5a3a1a', 0.85);
+      const bm = hairCapMat(s.hair.color || '#5a3a1a');
       const big = s.beard === 'dwarf';
       const bl = big ? hr * 3.0 : hr * 1.0;
       const bg = new THREE.ConeGeometry(hr * (big ? 0.85 : 0.6), bl, 14, 3);
@@ -511,7 +511,16 @@ export class Humanoid {
     } else {
       this.j.hips.position.y = lerp(this.j.hips.position.y, this.hipY + Math.sin(t * 1.7) * 0.004, 0.2);
     }
-    if (state.airborne) {
+    if (state.mounted) {
+      // посадка в седле: ноги в стременах, руки держат поводья
+      T.hipL = [-1.25, 0, 0.42]; T.hipR = [-1.25, 0, -0.42];
+      T.kneeL = [1.45, 0, 0]; T.kneeR = [1.45, 0, 0];
+      T.ankleL = [-0.15, 0, 0]; T.ankleR = [-0.15, 0, 0];
+      T.spine[0] += 0.12 + (state.mountSpeed || 0) * 0.012;
+      if (!this.action) { T.shoulderL = [-0.55, 0, 0.12]; T.shoulderR = [-0.55, 0, -0.12]; T.elbowL = [-1.0, 0, 0]; T.elbowR = [-1.0, 0, 0]; }
+      this.j.hips.position.y = this.hipY;
+    }
+    if (state.airborne && !state.mounted) {
       T.hipL[0] = -0.6; T.kneeL[0] = 1.0; T.hipR[0] = 0.1; T.kneeR[0] = 0.5;
     }
     // Действие (атака/каст)
@@ -555,6 +564,17 @@ export class Humanoid {
       c[0] += (tg[0] - c[0]) * kk; c[1] += (tg[1] - c[1]) * kk; c[2] += (tg[2] - c[2]) * kk;
       this.j[n].rotation.set(c[0], c[1], c[2]);
     }
+    // моргание
+    if (this.lids) {
+      this.blinkT = (this.blinkT == null ? 2 + Math.random() * 3 : this.blinkT) - dt;
+      const k = this.blinkT < 0.12 ? 2.1 : 1;
+      if (this.blinkT < 0) this.blinkT = 2.5 + Math.random() * 3.5;
+      for (const l of this.lids) l.scale.y = this.deadT >= 0 ? 2.1 : k;
+    }
+    // покачивание таза при ходьбе и перенос веса в покое
+    if (blend > 0.02) this.j.hips.rotation.z = Math.sin(this.phase) * 0.06 * Math.min(1, blend);
+    else { this.j.hips.rotation.z = Math.sin(t * 0.45) * 0.025; this.j.spine.rotation.z = -Math.sin(t * 0.45) * 0.02; }
+    if (this.robe) this.deformRobe();
     // анимация тканей (плащ)
     if (this.cape) {
       const sw = Math.sin(t * 2.3) * 0.04 + blend * 0.35;
@@ -564,6 +584,44 @@ export class Humanoid {
       this.robe.rotation.x = -this.cur.spine[0] * 0.3 + Math.sin(this.phase) * 0.04 * blend;
     }
     if (this.updateExtra) this.updateExtra(dt, t, blend);
+  }
+
+  // Мантия раздвигается ногами (без просвечивания)
+  deformRobe() {
+    const d = this.dim, robe = this.robe;
+    const hx = (d.F ? 0.098 : 0.092) * d.W;
+    const legs = ['L', 'R'].map((sd) => {
+      const t1 = this.cur['hip' + sd][0], t2 = this.cur['knee' + sd][0];
+      const H = [sd === 'L' ? hx : -hx, -0.05, 0];
+      const K = [H[0], H[1] - d.thigh * Math.cos(t1), -d.thigh * Math.sin(t1)];
+      const A = [H[0], K[1] - d.shin * Math.cos(t1 + t2), K[2] - d.shin * Math.sin(t1 + t2)];
+      return { H, K, A };
+    });
+    const legR = 0.1 * d.T;
+    for (const m of robe.children) {
+      const base = m.userData.base;
+      if (!base) continue;
+      const pos = m.geometry.attributes.position;
+      const sz = m.scale.z || 1;
+      for (let i = 0; i < pos.count; i++) {
+        const bx = base[i * 3], by = base[i * 3 + 1], bz = base[i * 3 + 2] * sz;
+        const r0 = Math.hypot(bx, bz);
+        if (r0 < 1e-4) continue;
+        const cx = bx / r0, cz = bz / r0;
+        let need = r0;
+        for (const L of legs) {
+          let lx, lz;
+          if (by >= L.K[1]) { const t = clamp((L.H[1] - by) / Math.max(1e-3, L.H[1] - L.K[1]), 0, 1); lx = L.H[0]; lz = L.H[2] + (L.K[2] - L.H[2]) * t; }
+          else { const t = clamp((L.K[1] - by) / Math.max(1e-3, L.K[1] - L.A[1]), 0, 1.3); lx = L.K[0]; lz = L.K[2] + (L.A[2] - L.K[2]) * t; }
+          const p = lx * cx + lz * cz, q = Math.abs(-lx * cz + lz * cx);
+          if (q < legR) need = Math.max(need, p + Math.sqrt(legR * legR - q * q) + 0.02);
+        }
+        const k = need / r0;
+        pos.setXYZ(i, bx * k, by, base[i * 3 + 2] * k);
+      }
+      pos.needsUpdate = true;
+      m.geometry.computeVertexNormals();
+    }
   }
 
   worldPos(jointName, out = new THREE.Vector3()) {

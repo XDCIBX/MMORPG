@@ -57,6 +57,7 @@ export class UI {
     bind('t-target', () => g.tabTarget());
     bind('t-hp', () => g.player.usePotion('hp'));
     bind('t-mp', () => g.player.usePotion('mp'));
+    bind('t-mount', () => g.input.tap('KeyG'));
     // подсказка над предметом скрывается касанием в другом месте
     document.addEventListener('touchstart', (e) => {
       if (!e.target.closest || !e.target.closest('.slot, .shop-item')) { this.hideTip(); this.tipKey = null; }
@@ -206,6 +207,10 @@ export class UI {
       $('castbar').classList.remove('hidden');
       $('cast-fill').style.width = (P.casting.t / P.casting.dur * 100) + '%';
       $('cast-t').textContent = P.casting.skill.name;
+    } else if (P.mountCast > 0 && this.castInfo) {
+      $('castbar').classList.remove('hidden');
+      $('cast-fill').style.width = ((1 - P.mountCast / this.castInfo.dur) * 100) + '%';
+      $('cast-t').textContent = this.castInfo.name;
     } else $('castbar').classList.add('hidden');
     // босс
     if (this.boss) {
@@ -872,7 +877,7 @@ export class UI {
       <kbd>Касание NPC</kbd><span>Поговорить (или кнопка 💬 рядом с ним)</span>
       <kbd>⚔</kbd><span>Атака: ближайший враг или выбранная цель</span>
       <kbd>Кнопки по дуге</kbd><span>Умения: внутренняя дуга — 1–4, внешняя — 5–9 (7–9 — умения пути)</span>
-      <kbd>⤒ · ⟳ · 🧪 · 💧</kbd><span>Прыжок · следующая цель · зелье здоровья · зелье маны</span>
+      <kbd>⤒ · ⟳ · 🧪 · 💧 · 🐎</kbd><span>Прыжок · следующая цель · зелья · призвать скакуна</span>
       <kbd>Предметы</kbd><span>Касание — описание, повторное — надеть/купить, долгое — продать</span>
     </div>`;
     b.innerHTML = this.touch ? touchHelp : '';
@@ -886,6 +891,7 @@ export class UI {
       <kbd>1 – 9</kbd><span>Умения (1–6 основные, 7–9 — путь развития)</span>
       <kbd>Z / X</kbd><span>Зелье здоровья / маны</span>
       <kbd>F</kbd><span>Говорить с NPC, телепорт</span>
+      <kbd>G</kbd><span>Призвать скакуна / спешиться</span>
       <kbd>C · B · L · K · M</kbd><span>Персонаж · Сумка · Задания · Умения · Карта</span>
       <kbd>Esc</kbd><span>Закрыть окна / меню</span>
     </div>
