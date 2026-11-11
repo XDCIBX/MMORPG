@@ -800,7 +800,12 @@ export class UI {
     $('h-save').onclick = () => { g.save(); this.notify('Игра сохранена', '#7aff7a'); };
     $('h-q').onclick = () => { g.setQuality(g.quality >= 1 ? 0.6 : 1); this.openHelp(); };
     $('h-snd').onclick = () => { this.muted = !this.muted; this.openHelp(); };
-    $('h-del').onclick = () => { if (confirm('Удалить сохранение и начать заново?')) { localStorage.removeItem(g.saveKey); location.reload(); } };
+    $('h-del').onclick = () => {
+      const b = $('h-del');
+      if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'Точно удалить? Нажмите ещё раз'; return; }
+      g.saveKey = 'deleted'; try { localStorage.removeItem('three_crowns_save_v1'); } catch (e) { /* */ }
+      location.reload();
+    };
   }
 
   // ---------- Диалоги с NPC ----------

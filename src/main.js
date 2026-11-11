@@ -138,8 +138,10 @@ class App {
     $('btn-continue').disabled = !save;
     if (save) $('save-info').textContent = `${save.player.name} — ${CLASSES[save.player.cls].name}, ${save.player.level} уровень`;
     $('btn-continue').onclick = () => { $('screen-menu').classList.add('hidden'); this.startGame(save.player, save); };
+    $('btn-new').textContent = 'Новый герой';
+    let armed = false;
     $('btn-new').onclick = () => {
-      if (save && !confirm('Начать нового героя? Текущее сохранение будет перезаписано.')) return;
+      if (save && !armed) { armed = true; $('btn-new').textContent = 'Нажмите ещё раз: сохранение сотрётся'; return; }
       $('screen-menu').classList.add('hidden'); this.showCreate();
     };
   }

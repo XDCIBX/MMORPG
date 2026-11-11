@@ -198,7 +198,8 @@ export class Terrain {
         r += tmp[0] * w; gg += tmp[1] * w; b += tmp[2] * w;
       }
       // снег на высоких пиках
-      const snowT = smoothstep(48, 70, h) * smoothstep(0.55, 0.8, ny);
+      const hotW = this.biomeW[idx * nb + BIOMES.volcanic.id] + this.biomeW[idx * nb + BIOMES.swamp.id];
+      const snowT = smoothstep(48, 70, h) * smoothstep(0.55, 0.8, ny) * (1 - Math.min(1, hotW * 1.5));
       r = lerp(r, 0.92, snowT); gg = lerp(gg, 0.94, snowT); b = lerp(b, 0.98, snowT);
       // песок/ил у воды
       const swampW = this.biomeW[idx * nb + BIOMES.swamp.id];

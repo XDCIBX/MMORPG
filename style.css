@@ -245,3 +245,16 @@ button { font-family: var(--ui); }
 .help-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 14px; }
 .help-grid kbd { background: #2a2418; border: 1px solid var(--gold-dim); border-radius: 4px; padding: 2px 7px; font-family: var(--ui); font-size: 13px; color: var(--gold); white-space: nowrap; }
 .tp-list .opt { justify-content: space-between; }
+
+/* Небольшие экраны */
+@media (max-width: 1400px) {
+  #hud-log { width: 300px; height: 130px; bottom: 96px; font-size: 12px; }
+  .sk { width: 46px; height: 46px; font-size: 22px; }
+  #menubar { bottom: 96px; }
+  #hud-tracker { width: 220px; }
+}
+@media (max-width: 1000px) {
+  #hud-player { min-width: 260px; }
+  #hud-mini { width: 170px; } #minimap { width: 150px; height: 150px; }
+  #hud-tracker { top: 240px; }
+}
