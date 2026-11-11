@@ -6,6 +6,7 @@ import { createNPCs } from './npcs.js';
 import { QuestLog } from './quests.js';
 import { Combat } from './combat.js';
 import { Effects } from '../fx/effects.js';
+import { furLOD } from '../chars/beasts.js';
 import { FX } from '../fx/particles.js';
 import { UI } from '../ui/ui.js';
 import { CITIES, SECRET_SHOPS } from '../data/world.js';
@@ -33,6 +34,7 @@ export class Game {
 
   start(data, saved = null) {
     this.effects = new Effects(this.scene);
+    this.effects.camera = this.camera;
     this.combat = new Combat(this);
     this.discovered = saved ? saved.discovered : { cities: ['c1'], shops: [] };
     this.player = new Player(this, data);
@@ -328,6 +330,8 @@ export class Game {
     this.effects.update(dt);
     FX.update(dt);
     this.updateCamera(dt);
+    furLOD.cam.copy(this.camera.position);
+    furLOD.dist = this.quality >= 1 ? 45 : this.quality >= 0.6 ? 25 : 0;
     this.world.update(dt, P.pos, this.camera.position);
     if (this.target && this.target.alive === false && this.target.team === 'enemy' && (this.target.deathT || 0) > 3) this.setTarget(null);
     // открытие городов и лавок, смена локаций

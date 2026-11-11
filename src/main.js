@@ -5,6 +5,8 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { World } from './world/world.js';
 import { Game } from './game/game.js';
 import { FX } from './fx/particles.js';
@@ -49,8 +51,35 @@ class App {
     this.composer.addPass(this.renderPass);
     this.bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), hdr ? 0.45 : 0.3, 0.5, hdr ? 1.6 : 0.92);
     this.bloom.enabled = this.quality >= 0.6;
+    // мягкие контактные тени (ambient occlusion) — только на мощных ПК
+    if (!IS_TOUCH) {
+      this.ao = new GTAOPass(this.scene, this.camera, window.innerWidth, window.innerHeight);
+      this.ao.output = GTAOPass.OUTPUT.Default;
+      this.ao.blendIntensity = 0.85;
+      this.ao.updateGtaoMaterial({ radius: 0.9, distanceExponent: 1.5, thickness: 1.2, scale: 1.0, samples: 12 });
+      this.ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+      this.ao.enabled = this.quality >= 1;
+      this.composer.addPass(this.ao);
+    }
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
+    // цветокоррекция и виньетка (после тонмаппинга)
+    this.grade = new ShaderPass({
+      uniforms: { tDiffuse: { value: null }, uVig: { value: IS_TOUCH ? 0.18 : 0.28 } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: `uniform sampler2D tDiffuse; uniform float uVig; varying vec2 vUv;
+        void main(){
+          vec3 c = texture2D(tDiffuse, vUv).rgb;
+          float l = dot(c, vec3(0.299, 0.587, 0.114));
+          c = mix(vec3(l), c, 1.1);                           // насыщенность
+          c = (c - 0.5) * 1.06 + 0.5;                         // контраст
+          c *= mix(vec3(0.97, 0.99, 1.05), vec3(1.04, 1.01, 0.95), smoothstep(0.2, 0.8, l)); // тёплые света, холодные тени
+          vec2 d = vUv - 0.5;
+          c *= 1.0 - uVig * smoothstep(0.25, 0.85, dot(d, d) * 2.2);
+          gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+        }`,
+    });
+    this.composer.addPass(this.grade);
     this.composer.setPixelRatio(r.getPixelRatio());
     window.addEventListener('resize', () => this.resize());
     window.addEventListener('orientationchange', () => setTimeout(() => this.resize(), 300));
@@ -76,6 +105,7 @@ class App {
     this.renderer.setPixelRatio(this.pixelRatioFor(q));
     this.composer.setPixelRatio(this.renderer.getPixelRatio());
     this.bloom.enabled = q >= 0.6;
+    if (this.ao) this.ao.enabled = q >= 1;
     if (this.world) this.world.applyQuality(q);
     this.resize();
   }
@@ -280,7 +310,9 @@ class App {
       this.menuRune.rotation.z += dt * 0.2;
       this.menuSparks.rotation.y += dt * 0.03;
       this.renderPass.scene = this.menuScene; this.renderPass.camera = this.menuCam;
+      if (this.ao) this.ao.enabled = false;
     } else if (this.mode === 'game' && this.game) {
+      if (this.ao) this.ao.enabled = this.quality >= 1;
       this.game.update(dt);
     }
     this.input.endFrame();

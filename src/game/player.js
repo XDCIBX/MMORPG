@@ -8,6 +8,7 @@ import { SLOTS, starterKit, makePotion } from '../data/items.js';
 import { castSkill, levelUpFx, hitFx } from './skills.js';
 import { FX } from '../fx/particles.js';
 import { buildMount } from '../chars/beasts.js';
+import { WeaponTrail } from '../fx/trails.js';
 import { clamp, angleLerp } from '../core/util.js';
 
 const BAG_SIZE = 40;
@@ -64,6 +65,7 @@ export class Player extends Entity {
     this.radius = 0.45;
     this.moveSpeed = 0;
     this.buildModel();
+    this.trail = new WeaponTrail(game.scene, this.trailColor());
     this.recalc();
     this.hp = data.hp ? Math.min(data.hp, this.maxHp) : this.maxHp;
     this.res = data.res != null ? Math.min(data.res, this.maxRes) : this.maxRes;
@@ -284,6 +286,11 @@ export class Player extends Entity {
     }
     if (this.level >= 100) this.xp = 0;
   }
+  trailColor() {
+    const B = this.branch && this.C.branches[this.branch];
+    if (B) return B.color;
+    return { dwarf: '#ffae50', warrior: '#bcd4ff', archer: '#e0ffd0', mage: '#a0b0ff', necro: '#60ffa0' }[this.cls];
+  }
   setBranch(b) {
     this.branch = b;
     this.recalc();
@@ -293,6 +300,7 @@ export class Player extends Entity {
     this.game.effects.pillar(this.pos.clone(), col, 2, 22, 1.6);
     FX.burst(this.pos.x, this.pos.y + 1, this.pos.z, 100, { color: [col, '#ffffff'], speed: 8, life: 1.4, size: 0.5 });
     this.game.ui.notify(`Путь избран: ${this.C.branches[b].name}`, col, true);
+    if (this.trail) this.trail.setColor(this.trailColor());
     this.game.save();
   }
 
@@ -426,6 +434,10 @@ export class Player extends Entity {
     // модель
     this.model.update(dt, { speed: this.mounted ? 0 : this.moveSpeed, runSpeed: this.speed, airborne: !this.mounted && (!this.onGround || this.jumpOffset > 0.3), mounted: this.mounted, mountSpeed: Math.abs(this.moveSpeed) });
     if (this.mounted) this.mount.update(dt, { speed: this.moveSpeed });
+    // светящийся след клинка во время удара
+    const M = this.model;
+    const swing = M.action && ['slash', 'slash2', 'slam', 'sweep', 'thrust', 'bash'].includes(M.actionName) && M.actionT > 0.18 && M.actionT < 0.78;
+    this.trail.update(dt, M, swing);
     animateGear(this.model, g.time);
     this.syncModel();
   }
@@ -484,15 +496,27 @@ export class Player extends Entity {
     const g = this.game;
     this.dismount();
     const wt = this.model.weaponType || 'none';
-    const anim = WEAPON_ANIM[wt] || 'thrust';
+    let anim = WEAPON_ANIM[wt] || 'thrust';
+    let finisher = false;
+    if (this.C.melee || wt === 'scythe') {
+      // серия ударов: рубящий, обратный, завершающий
+      const chains = { sword: ['slash', 'slash2', 'thrust'], greatsword: ['slash', 'slash2', 'slam'], axe: ['slash', 'slash2', 'slam'], hammer: ['slash', 'slash2', 'slam'], scythe: ['sweep', 'slash', 'slash2'] };
+      const ch = chains[wt] || ['slash', 'slash2', 'thrust'];
+      if (g.time - (this.comboT || 0) > 2.5) this.combo = 0;
+      anim = ch[(this.combo || 0) % 3];
+      finisher = (this.combo || 0) % 3 === 2;
+      this.combo = (this.combo || 0) + 1;
+      this.comboT = g.time;
+    }
     this.model.playAction(anim, this.hasteMul * 1.1);
-    const dmg = this.ap * (this.C.melee ? 1.0 : 0.85);
+    const dmg = this.ap * (this.C.melee ? 1.0 : 0.85) * (finisher ? 1.3 : 1);
     if (this.C.melee) {
-      g.schedule(0.24 / this.hasteMul, () => {
+      g.schedule((anim === 'slam' ? 0.42 : 0.28) / (this.hasteMul * 1.1), () => {
         if (!tgt.alive) return;
-        g.effects.slashArc(this.pos.clone().setY(this.pos.y + 1.1), this.yaw, '#ffffff', 2.0, 0.2, 0.4);
         g.combat.dealDamage(this, tgt, dmg);
-        hitFx(g, 'slash', tgt.center());
+        hitFx(g, finisher && anim === 'slam' ? 'impact' : 'slash', tgt.center());
+        if (finisher) { g.effects.crescent(this.pos.clone().setY(this.pos.y + 1.1).add(new THREE.Vector3(Math.sin(this.yaw) * 0.6, 0, Math.cos(this.yaw) * 0.6)), this.yaw, this.trailColor(), 2.2, { dur: 0.28, travel: 1.2, roll: 0.4 }); g.shake(0.25); }
+        else g.shake(0.08);
         tgt.aggro && tgt.aggro(this);
         if (this.C.resource === 'Ярость') this.res = Math.min(this.maxRes, this.res + 8);
         g.ui.sound('hit');

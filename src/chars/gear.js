@@ -1,7 +1,7 @@
 // Визуализация снаряжения на гуманоиде: доспехи по слотам и оружие.
 import * as THREE from 'three';
 import { limbGeo, latheGeo, ellipsoid } from './humanoid.js';
-import { metalMat, leatherMat, clothMat, gemMat, woodMat, boneMat, basicMat, glowMat } from './materials.js';
+import { metalMat, leatherMat, clothMat, gemMat, woodMat, boneMat, basicMat, glowMat, chainMat } from './materials.js';
 
 function add(h, list, geo, mat, parent, x = 0, y = 0, z = 0) {
   const m = new THREE.Mesh(geo, mat);
@@ -130,7 +130,12 @@ const SLOT_BUILDERS = {
     ab.scale.set(W * 1.02, 1, 0.76 * D);
     // рукава
     for (const sd of ['L', 'R']) {
-      const sm = add(h, L, limbGeo(d.uarm * 0.9, 0.06 * d.T * 1.12, 0.05 * d.T * 1.12, 0.15, 0.4), v.kind === 'heavy' ? clothMat('#3a3530') : P, h.j['shoulder' + sd], 0, -0.01, 0);
+      const sm = add(h, L, limbGeo(d.uarm * 0.9, 0.066 * d.T * 1.12, 0.055 * d.T * 1.12, 0.15, 0.4), v.kind === 'heavy' ? chainMat() : P, h.j['shoulder' + sd], 0, -0.01, 0);
+      if (v.kind === 'heavy') {
+        // кольчужный рукав до локтя и латный налокотник
+        add(h, L, limbGeo(h.dim.farm * 0.5, 0.056 * d.T * 1.1, 0.05 * d.T * 1.1, 0.1, 0.4), chainMat(), h.j['elbow' + sd], 0, 0.02, 0);
+        add(h, L, new THREE.SphereGeometry(0.05 * d.T, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), P, h.j['elbow' + sd], 0, 0, -0.03).rotation.x = -Math.PI / 2;
+      }
       void sm;
       if (v.kind === 'cloth') {
         const bell = add(h, L, latheGeo([[0.075, -d.farm * 1.02], [0.06, -d.farm * 0.6], [0.05, -0.02], [0.05, 0.02]], 14), P, h.j['elbow' + sd]);

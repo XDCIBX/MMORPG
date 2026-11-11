@@ -534,6 +534,39 @@ export function barkTex(birch = false) {
   });
 }
 
+
+// Мип-уровни для листвы: при уменьшении альфа усиливается, чтобы кроны не «таяли» вдали
+export function foliageTex(c) {
+  const levels = [c];
+  let cur = c, boost = 1.0;
+  while (cur.width > 1 || cur.height > 1) {
+    const w = Math.max(1, cur.width >> 1), h = Math.max(1, cur.height >> 1);
+    const n = document.createElement('canvas'); n.width = w; n.height = h;
+    const x = n.getContext('2d');
+    x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+    x.drawImage(cur, 0, 0, w, h);
+    boost = Math.min(2.6, boost * 1.35);
+    const img = x.getImageData(0, 0, w, h), d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const a = d[i + 3];
+      if (a > 0) { const k = 255 / a; d[i] = Math.min(255, d[i] * k); d[i + 1] = Math.min(255, d[i + 1] * k); d[i + 2] = Math.min(255, d[i + 2] * k); }
+      d[i + 3] = Math.min(255, a * boost);
+    }
+    x.putImageData(img, 0, 0);
+    levels.push(n);
+    cur = n;
+  }
+  const t = new THREE.Texture(c);
+  t.mipmaps = levels;
+  t.generateMipmaps = false;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = maxAniso;
+  t.needsUpdate = true;
+  return t;
+}
+
 // Пучок листьев с прозрачностью (для карточек кроны). kind: 'broad' | 'small' | 'willow'
 export function leafCard(kind = 'broad') {
   return memo('leaf' + kind, () => {
@@ -543,7 +576,26 @@ export function leafCard(kind = 'broad') {
     // веточки
     ctx.strokeStyle = 'rgba(70,50,30,1)'; ctx.lineWidth = 3;
     for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.moveTo(w / 2, w / 2); ctx.lineTo(w / 2 + (rnd() - 0.5) * w * 0.8, w / 2 + (rnd() - 0.5) * w * 0.8); ctx.stroke(); }
-    const n = kind === 'willow' ? 140 : kind === 'small' ? 170 : 110;
+    if (kind === 'willow') {
+      // свисающие ветви ивы: тонкие прутья, вдоль которых растут узкие листья
+      for (let k = 0; k < 7; k++) {
+        let x = w * (0.1 + k * 0.13 + (rnd() - 0.5) * 0.04);
+        ctx.strokeStyle = 'rgba(80,70,40,1)'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(x, 0);
+        const pts = [];
+        for (let y = 0; y <= w; y += 6) { x += (rnd() - 0.5) * 2; pts.push([x, y]); ctx.lineTo(x, y); }
+        ctx.stroke();
+        for (const [px, py] of pts) for (const sd of [-1, 1]) {
+          const L = 14 + rnd() * 8, l = 0.6 + rnd() * 0.4;
+          ctx.save(); ctx.translate(px, py); ctx.rotate(Math.PI / 2 + sd * (0.35 + rnd() * 0.3));
+          ctx.fillStyle = `rgb(${105 * l | 0},${150 * l | 0},${60 * l | 0})`;
+          ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(L * 0.5, -3.6, L, 0); ctx.quadraticCurveTo(L * 0.5, 3.6, 0, 0); ctx.fill();
+          ctx.restore();
+        }
+      }
+      return foliageTex(c);
+    }
+    const n = kind === 'small' ? 190 : 130;
     for (let i = 0; i < n; i++) {
       let x, y;
       if (kind === 'willow') { x = w * (0.15 + rnd() * 0.7); y = rnd() * w; }
@@ -561,8 +613,7 @@ export function leafCard(kind = 'broad') {
       ctx.strokeStyle = 'rgba(40,70,20,0.6)'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(-L, 0); ctx.lineTo(L, 0); ctx.stroke();
       ctx.restore();
     }
-    const t = toTex(c, { repeat: false });
-    return t;
+    return foliageTex(c);
   });
 }
 
@@ -579,7 +630,7 @@ export function pineCard(snow = false) {
       const steps = Math.floor(len / 3);
       for (let i = 0; i < steps; i++) {
         const t = i / steps, px = x0 + (x1 - x0) * t, py = y0 + (y1 - y0) * t;
-        const nl = (lvl === 0 ? 16 : 10) * (1 - t * 0.6);
+        const nl = (lvl === 0 ? 22 : 14) * (1 - t * 0.55);
         for (const sd of [-1, 1]) {
           const na = ang + sd * (0.9 + rnd() * 0.3);
           const l = 0.5 + rnd() * 0.5;
@@ -591,7 +642,7 @@ export function pineCard(snow = false) {
       if (lvl === 0) for (let i = 1; i < 6; i++) branch(x0 + (x1 - x0) * i / 6, y0 + (y1 - y0) * i / 6, len * 0.35 * (1 - i / 8), ang + (i % 2 ? 0.7 : -0.7), 1);
     };
     branch(4, h / 2, w - 12, 0, 0);
-    return toTex(c, { repeat: false });
+    return foliageTex(c);
   });
 }
 
@@ -643,5 +694,138 @@ export function scaleTex() {
     const map = toTex(c); map.repeat.set(4, 4);
     const normalMap = toTex(heightToNormal(hc, 3), { srgb: false }); normalMap.repeat.set(4, 4);
     return { map, normalMap };
+  });
+}
+
+// Латы: шлифованный металл, гравированные полосы с завитками, заклёпки, фаски
+export function plateTex() {
+  return memo('plate', () => {
+    const w = 512, c = canvas(w), ctx = c.getContext('2d');
+    const hc = canvas(w), hctx = hc.getContext('2d');
+    ctx.fillStyle = '#d0d0d0'; ctx.fillRect(0, 0, w, w);
+    hctx.fillStyle = '#808080'; hctx.fillRect(0, 0, w, w);
+    const rnd = mulberry32(901);
+    // шлифовка
+    for (let i = 0; i < 2500; i++) { const y = rnd() * w, l = 180 + rnd() * 70 | 0; ctx.strokeStyle = `rgba(${l},${l},${l},0.25)`; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y + (rnd() - 0.5) * 4); ctx.stroke(); }
+    // пластины: горизонтальные полосы с фаской
+    const bands = 4, bh = w / bands;
+    for (let b = 0; b < bands; b++) {
+      const y0 = b * bh;
+      const g = hctx.createLinearGradient(0, y0, 0, y0 + bh);
+      g.addColorStop(0, '#404040'); g.addColorStop(0.06, '#c0c0c0'); g.addColorStop(0.5, '#a0a0a0'); g.addColorStop(0.94, '#c0c0c0'); g.addColorStop(1, '#303030');
+      hctx.fillStyle = g; hctx.fillRect(0, y0, w, bh);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0, y0, w, 3);
+      ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(0, y0 + 3, w, 2);
+      // гравированная кайма с завитками
+      ctx.strokeStyle = 'rgba(60,50,30,0.55)'; hctx.strokeStyle = '#303030'; ctx.lineWidth = hctx.lineWidth = 2;
+      for (const yy of [y0 + 14, y0 + bh - 14]) {
+        ctx.beginPath(); hctx.beginPath();
+        for (let x = 0; x <= w; x += 4) { const v = yy + Math.sin(x / 16) * 5; if (x === 0) { ctx.moveTo(x, v); hctx.moveTo(x, v); } else { ctx.lineTo(x, v); hctx.lineTo(x, v); } }
+        ctx.stroke(); hctx.stroke();
+        for (let x = 8; x < w; x += 32) { ctx.beginPath(); ctx.arc(x, yy, 4, 0, Math.PI * 1.5); ctx.stroke(); hctx.beginPath(); hctx.arc(x, yy, 4, 0, Math.PI * 1.5); hctx.stroke(); }
+      }
+      // заклёпки
+      for (let x = 16; x < w; x += 48) for (const yy of [y0 + 7, y0 + bh - 7]) {
+        const rg = hctx.createRadialGradient(x - 1, yy - 1, 0, x, yy, 5); rg.addColorStop(0, '#ffffff'); rg.addColorStop(1, '#202020');
+        hctx.fillStyle = rg; hctx.beginPath(); hctx.arc(x, yy, 5, 0, 7); hctx.fill();
+        const cg = ctx.createRadialGradient(x - 1.5, yy - 1.5, 0, x, yy, 5); cg.addColorStop(0, '#ffffff'); cg.addColorStop(1, '#707070');
+        ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(x, yy, 4.5, 0, 7); ctx.fill();
+      }
+    }
+    // царапины и потёртости
+    for (let i = 0; i < 120; i++) { const x = rnd() * w, y = rnd() * w, l = 5 + rnd() * 25, a = rnd() * Math.PI; ctx.strokeStyle = `rgba(${rnd() < 0.5 ? '40,40,40' : '255,255,255'},0.25)`; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); ctx.stroke(); }
+    noiseFill(ctx, w, w, 902, 4, 18);
+    const map = toTex(c); map.repeat.set(2, 1);
+    const normalMap = toTex(heightToNormal(hc, 3), { srgb: false }); normalMap.repeat.set(2, 1);
+    return { map, normalMap };
+  });
+}
+
+// Кольчуга
+export function chainmailTex() {
+  return memo('chain', () => {
+    const w = 256, c = canvas(w), ctx = c.getContext('2d');
+    const hc = canvas(w), hctx = hc.getContext('2d');
+    ctx.fillStyle = '#202020'; ctx.fillRect(0, 0, w, w);
+    hctx.fillStyle = '#000'; hctx.fillRect(0, 0, w, w);
+    const s = 8;
+    for (let y = -s; y < w + s; y += s) for (let x = -s; x < w + s; x += s) {
+      const ox = (Math.floor(y / s) % 2) * s / 2;
+      ctx.strokeStyle = '#b8b8b8'; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.ellipse(x + ox, y, s * 0.55, s * 0.42, 0, 0, 7); ctx.stroke();
+      hctx.strokeStyle = '#ffffff'; hctx.lineWidth = 2.2; hctx.beginPath(); hctx.ellipse(x + ox, y, s * 0.55, s * 0.42, 0, 0, 7); hctx.stroke();
+    }
+    const map = toTex(c); map.repeat.set(3, 3);
+    const normalMap = toTex(heightToNormal(hc, 3), { srgb: false }); normalMap.repeat.set(3, 3);
+    return { map, normalMap };
+  });
+}
+
+// Кожа с прострочкой
+export function stitchedLeatherTex() {
+  return memo('stitch', () => {
+    const w = 256, c = canvas(w), ctx = c.getContext('2d');
+    const hc = canvas(w), hctx = hc.getContext('2d');
+    ctx.fillStyle = '#b4b4b4'; ctx.fillRect(0, 0, w, w);
+    hctx.fillStyle = '#808080'; hctx.fillRect(0, 0, w, w);
+    noiseFill(ctx, w, w, 911, 20, 28);
+    noiseFill(hctx, w, w, 912, 28, 40);
+    const rnd = mulberry32(913);
+    // швы: двойные строчки
+    for (const y of [w * 0.25, w * 0.75]) {
+      hctx.fillStyle = '#404040'; hctx.fillRect(0, y - 2, w, 4);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(0, y - 1.5, w, 3);
+      for (const off of [-7, 7]) for (let x = 0; x < w; x += 10) {
+        ctx.fillStyle = 'rgba(230,215,180,0.9)'; ctx.fillRect(x, y + off - 1, 6, 2);
+        hctx.fillStyle = '#c0c0c0'; hctx.fillRect(x, y + off - 1, 6, 2);
+      }
+    }
+    speckle(ctx, w, w, rnd, 400, ['rgba(0,0,0,0.12)', 'rgba(255,255,255,0.08)'], 1, 2);
+    const map = toTex(c); map.repeat.set(2, 1);
+    const normalMap = toTex(heightToNormal(hc, 2.5), { srgb: false }); normalMap.repeat.set(2, 1);
+    return { map, normalMap };
+  });
+}
+
+// Плетение ткани (нормали)
+export function weaveNormal() {
+  return memo('weave', () => {
+    const w = 128, hc = canvas(w), hctx = hc.getContext('2d');
+    for (let y = 0; y < w; y++) for (let x = 0; x < w; x++) {
+      const v = ((Math.floor(x / 4) + Math.floor(y / 4)) % 2) ? Math.sin((x % 4) / 4 * Math.PI) : Math.sin((y % 4) / 4 * Math.PI);
+      const l = 100 + v * 120 | 0; hctx.fillStyle = `rgb(${l},${l},${l})`; hctx.fillRect(x, y, 1, 1);
+    }
+    const t = toTex(heightToNormal(hc, 1.5), { srgb: false }); t.repeat.set(6, 6);
+    return t;
+  });
+}
+
+// Рельеф мышц для открытых торсов (грудь/спина и пресс). Развёртка lathe: u=0 — перед
+export function muscleNormal(part) {
+  return memo('muscle' + part, () => {
+    const W = 256, H = 256, c = canvas(W, H), ctx = c.getContext('2d');
+    ctx.fillStyle = '#808080'; ctx.fillRect(0, 0, W, H);
+    const blob = (u, v, rx, ry, k) => {
+      for (const du of [-1, 0, 1]) {
+        const x = (u + du) * W, y = (1 - v) * H;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, Math.max(rx, ry) * W);
+        const l = k > 0 ? 255 : 0;
+        g.addColorStop(0, `rgba(${l},${l},${l},${Math.abs(k)})`); g.addColorStop(1, `rgba(${l},${l},${l},0)`);
+        ctx.save(); ctx.translate(x, y); ctx.scale(rx / Math.max(rx, ry), ry / Math.max(rx, ry)); ctx.translate(-x, -y);
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, Math.max(rx, ry) * W, 0, 7); ctx.fill(); ctx.restore();
+      }
+    };
+    if (part === 'chest') {
+      blob(0.075, 0.62, 0.075, 0.13, 0.75); blob(0.925, 0.62, 0.075, 0.13, 0.75); // грудные
+      blob(0, 0.55, 0.012, 0.3, -0.6); // грудина
+      blob(0.42, 0.68, 0.06, 0.14, 0.5); blob(0.58, 0.68, 0.06, 0.14, 0.5); // лопатки
+      blob(0.5, 0.5, 0.012, 0.4, -0.5); // позвоночник
+      blob(0.2, 0.4, 0.04, 0.25, 0.35); blob(0.8, 0.4, 0.04, 0.25, 0.35); // широчайшие
+    } else {
+      for (let r = 0; r < 3; r++) for (const u of [0.045, 0.955]) blob(u, 0.25 + r * 0.25, 0.035, 0.08, 0.55);
+      blob(0, 0.5, 0.008, 0.45, -0.6);
+      blob(0.13, 0.5, 0.04, 0.3, 0.3); blob(0.87, 0.5, 0.04, 0.3, 0.3); // косые
+      blob(0.5, 0.5, 0.012, 0.45, -0.4);
+    }
+    return toTex(heightToNormal(c, 5), { srgb: false });
   });
 }

@@ -1,6 +1,6 @@
 // Кэш материалов для персонажей и снаряжения.
 import * as THREE from 'three';
-import { metalTex, leatherTex, cloth as clothTex } from '../core/textures.js';
+import { metalTex, leatherTex, cloth as clothTex, plateTex, chainmailTex, stitchedLeatherTex, weaveNormal, muscleNormal } from '../core/textures.js';
 
 const cache = new Map();
 function key(...a) { return a.join('|'); }
@@ -14,19 +14,20 @@ export function clothMat(color, pattern = 0) {
   const k = key('cloth', color, pattern);
   if (!cache.has(k)) {
     const t = clothTex('#ffffff', pattern);
-    cache.set(k, new THREE.MeshStandardMaterial({ color, map: t, roughness: 0.88, metalness: 0, side: THREE.DoubleSide }));
+    cache.set(k, new THREE.MeshStandardMaterial({ color, map: t, normalMap: weaveNormal(), normalScale: new THREE.Vector2(0.6, 0.6), roughness: 0.88, metalness: 0, side: THREE.DoubleSide }));
   }
   return cache.get(k);
 }
 export function leatherMat(color) {
   const k = key('leather', color);
-  if (!cache.has(k)) cache.set(k, new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.05, bumpMap: leatherTex(), bumpScale: 1.2 }));
+  if (!cache.has(k)) { const t = stitchedLeatherTex(); cache.set(k, new THREE.MeshStandardMaterial({ color, map: t.map, normalMap: t.normalMap, roughness: 0.68, metalness: 0.05 })); }
   return cache.get(k);
 }
 export function metalMat(color, rough = 0.32, emissive = null, ei = 0) {
   const k = key('metal', color, rough, emissive, ei);
   if (!cache.has(k)) {
-    const m = new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0.88, roughnessMap: metalTex(), envMapIntensity: 1.3 });
+    const pt = plateTex();
+    const m = new THREE.MeshStandardMaterial({ color, map: pt.map, normalMap: pt.normalMap, normalScale: new THREE.Vector2(0.9, 0.9), roughness: rough, metalness: 0.88, roughnessMap: metalTex(), envMapIntensity: 1.4 });
     if (emissive) { m.emissive = new THREE.Color(emissive); m.emissiveIntensity = ei; }
     cache.set(k, m);
   }
@@ -55,5 +56,18 @@ export function woodMat(color = '#5b3b22') {
 export function boneMat(color = '#d8cfb4') {
   const k = key('bone', color);
   if (!cache.has(k)) cache.set(k, new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0 }));
+  return cache.get(k);
+}
+
+export function chainMat(color = '#8a8a90') {
+  const k = key('chain', color);
+  if (!cache.has(k)) { const t = chainmailTex(); cache.set(k, new THREE.MeshStandardMaterial({ color, map: t.map, normalMap: t.normalMap, roughness: 0.45, metalness: 0.85, envMapIntensity: 1.2 })); }
+  return cache.get(k);
+}
+
+// Кожа торса с рельефом мышц
+export function muscleSkinMat(color, part) {
+  const k = key('mskin', color, part);
+  if (!cache.has(k)) cache.set(k, new THREE.MeshPhysicalMaterial({ color, roughness: 0.5, sheen: 0.3, sheenRoughness: 0.6, sheenColor: new THREE.Color('#ff9a80'), normalMap: muscleNormal(part), normalScale: new THREE.Vector2(1.4, 1.4) }));
   return cache.get(k);
 }

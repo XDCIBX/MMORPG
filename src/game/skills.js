@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { FX } from '../fx/particles.js';
 import { WEAPON_ANIM } from '../chars/gear.js';
 import { boneMat } from '../chars/materials.js';
+import { fireMat, energyMat } from '../fx/effects.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
@@ -11,57 +12,86 @@ export function hitFx(game, name, pos, opts = {}) {
   const E = game.effects;
   const p = pos.clone();
   switch (name) {
-    case 'impact':
-      FX.burst(p.x, p.y, p.z, 26, { color: ['#ffb040', '#ffe0a0', '#ffffff'], speed: 6, life: 0.4, size: 0.35 });
-      E.ringWave(p.clone().setY(p.y - 0.8), '#ffb060', 2.5, 0.35);
-      E.flash(p, '#ffb040', 15, 0.25);
+    case 'impact': {
+      // удар молота: волна по земле, обломки, искры
+      const g = p.clone(); g.y = game.world.standY(g.x, g.z);
+      E.shockwave(g, '#ffae50', 3.2, 0.45, true);
+      E.groundCrack(g, '#ff9040', 1.6, 1.4);
+      FX.burst(p.x, p.y, p.z, 34, { color: ['#ffb040', '#ffe0a0', '#ffffff'], speed: 8, life: 0.45, size: 0.3, gravity: 6 });
+      E.flash(p, '#ffb040', 25, 0.25);
+      game.shake(0.3);
       break;
+    }
     case 'slash':
       FX.burst(p.x, p.y, p.z, 14, { color: ['#ffffff', '#c0d0ff'], speed: 5, life: 0.3, size: 0.3 });
       break;
-    case 'shieldflash':
-      FX.burst(p.x, p.y, p.z, 30, { color: ['#a0c8ff', '#ffffff'], speed: 7, life: 0.35, size: 0.35 });
-      E.flash(p, '#80b0ff', 20, 0.3);
-      starStun(game, p);
+    case 'shieldflash': {
+      FX.burst(p.x, p.y, p.z, 40, { color: ['#a0c8ff', '#ffffff'], speed: 8, life: 0.35, size: 0.35 });
+      const fl = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#b0d0ff', transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      fl.position.copy(p); fl.rotation.x = Math.PI / 2;
+      E.add(fl, 0.3, (dt, k) => { fl.scale.setScalar(0.4 + k * 1.6); fl.material.opacity = 0.6 * (1 - k); });
+      E.flash(p, '#80b0ff', 30, 0.3);
+      if (opts.target) E.stunStars(() => (opts.target.alive ? opts.target.center().setY(opts.target.headY ? opts.target.headY() + 0.3 : p.y + 1.2) : null), opts.stun || 2);
+      game.shake(0.25);
       break;
-    case 'execute':
-      FX.burst(p.x, p.y, p.z, 40, { color: ['#ff2020', '#ff8040', '#300000'], speed: 7, life: 0.5, size: 0.45 });
-      E.flash(p, '#ff2020', 30, 0.35);
+    }
+    case 'execute': {
+      const g = p.clone(); g.y = game.world.standY(g.x, g.z);
+      E.crescent(p.clone().setY(p.y + 0.4), (opts.yaw || 0), '#ff2a20', 3.2, { tilt: Math.PI / 2, dur: 0.4, grow: 0.4 });
+      E.shockwave(g, '#ff3020', 4.5, 0.5, true);
+      FX.burst(p.x, p.y, p.z, 60, { color: ['#ff2020', '#ff8040', '#ffffff'], speed: 9, life: 0.5, size: 0.4, gravity: 5 });
+      E.flash(p, '#ff2020', 50, 0.4, 18);
+      game.shake(0.6);
       break;
+    }
     case 'holyblade':
-      FX.burst(p.x, p.y, p.z, 36, { color: ['#fff0a0', '#ffd040', '#ffffff'], speed: 6, life: 0.5, size: 0.45 });
-      E.flash(p, '#ffe080', 30, 0.4);
+      E.crescent(p.clone(), (opts.yaw || 0), '#ffe070', 2.6, { dur: 0.4, travel: 3, roll: 0.5 });
+      E.godRays(p.clone().setY(game.world.standY(p.x, p.z)), '#ffe8a0', 0.8, 1.2);
+      FX.burst(p.x, p.y, p.z, 40, { color: ['#fff0a0', '#ffd040', '#ffffff'], speed: 7, life: 0.5, size: 0.4 });
+      E.flash(p, '#ffe080', 40, 0.4);
       break;
     case 'rend':
-      FX.burst(p.x, p.y, p.z, 30, { color: ['#d02030', '#801018'], speed: 5, life: 0.6, size: 0.3, gravity: 9 });
+      E.crescent(p.clone(), (opts.yaw || 0), '#d0101c', 2.4, { dur: 0.35, roll: -0.6 });
+      for (let i = 0; i < 3; i++) game.schedule(i * 0.08, () => FX.burst(p.x, p.y, p.z, 20, { color: ['#c01020', '#600810'], speed: 5, life: 0.8, size: 0.25, gravity: 12 }));
       break;
     case 'arrowhit':
       FX.burst(p.x, p.y, p.z, 10, { color: ['#ffffff', '#e0d0a0'], speed: 4, life: 0.25, size: 0.2 });
       break;
     case 'poison':
-      FX.burst(p.x, p.y, p.z, 24, { color: ['#70ff40', '#305010'], speed: 3, life: 0.8, size: 0.5 });
+      FX.burst(p.x, p.y, p.z, 30, { color: ['#70ff40', '#305010'], speed: 3, life: 0.9, size: 0.5 });
+      for (let i = 0; i < 12; i++) FX.emit({ x: p.x + (Math.random() - 0.5) * 1.5, y: p.y + Math.random(), z: p.z + (Math.random() - 0.5) * 1.5, vy: 0.4, life: 2.2, size: 1.6, color: '#3a7a10', additive: false, alpha: 0.35, grow: 1 });
       break;
     case 'explosion':
       E.explosion(p, opts.color || '#ff7020', opts.size || 1);
       break;
     case 'frost':
-      FX.burst(p.x, p.y, p.z, 30, { color: ['#a0e8ff', '#ffffff'], speed: 5, life: 0.6, size: 0.4 });
-      E.flash(p, '#60c0ff', 20, 0.3);
+      E.iceSpikes(p.clone().setY(game.world.standY(p.x, p.z)), 1.4, 6, (x, z) => game.world.standY(x, z));
+      FX.burst(p.x, p.y, p.z, 36, { color: ['#a0e8ff', '#ffffff'], speed: 6, life: 0.6, size: 0.35 });
+      E.flash(p, '#60c0ff', 25, 0.3);
       break;
-    case 'lightning_hit':
-      FX.burst(p.x, p.y, p.z, 26, { color: ['#a0d8ff', '#ffffff'], speed: 8, life: 0.3, size: 0.3 });
-      E.flash(p, '#80c0ff', 30, 0.3);
+    case 'lightning_hit': {
+      E.skyBolt(p.clone().setY(game.world.standY(p.x, p.z)), '#90c8ff');
+      E.shockwave(p.clone().setY(game.world.standY(p.x, p.z)), '#80c0ff', 3, 0.4, false);
+      FX.burst(p.x, p.y, p.z, 30, { color: ['#a0d8ff', '#ffffff'], speed: 9, life: 0.3, size: 0.3 });
       break;
-    case 'crit':
-      FX.burst(p.x, p.y, p.z, 40, { color: ['#ff4040', '#ffd040', '#ffffff'], speed: 9, life: 0.4, size: 0.4 });
-      E.ringWave(p, '#ff6040', 3, 0.3, 0);
-      E.flash(p, '#ff4040', 30, 0.3);
+    }
+    case 'crit': {
+      const g = p.clone(); g.y = game.world.standY(g.x, g.z);
+      E.shockwave(g, '#ff3030', 3.5, 0.45, false);
+      FX.burst(p.x, p.y, p.z, 60, { color: ['#ff4040', '#ffd040', '#ffffff'], speed: 11, life: 0.45, size: 0.35 });
+      E.flash(p, '#ff4040', 50, 0.35, 16);
+      game.shake(0.45);
       break;
-    case 'shadowhit':
-      FX.burst(p.x, p.y, p.z, 30, { color: ['#a050ff', '#300850'], speed: 5, life: 0.7, size: 0.55 });
-      FX.burst(p.x, p.y, p.z, 10, { color: '#100018', speed: 2, life: 1.0, size: 1.0, additive: false, alpha: 0.6, grow: 1 });
-      E.flash(p, '#8030ff', 25, 0.35);
+    }
+    case 'shadowhit': {
+      const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 3), fireMat('#4a10a0', '#c080ff', { disp: 0.6 }));
+      ball.position.copy(p);
+      E.add(ball, 0.6, (dt, k) => { ball.scale.setScalar(0.4 + Math.sqrt(k) * 2.2); ball.material.uniforms.uAlpha.value = 1 - k; });
+      FX.burst(p.x, p.y, p.z, 30, { color: ['#a050ff', '#300850'], speed: 5, life: 0.7, size: 0.5 });
+      FX.burst(p.x, p.y, p.z, 14, { color: '#100018', speed: 2, life: 1.4, size: 1.4, additive: false, alpha: 0.55, grow: 1 });
+      E.flash(p, '#8030ff', 30, 0.35);
       break;
+    }
     case 'drain':
       FX.burst(p.x, p.y, p.z, 26, { color: ['#ff2050', '#a00020'], speed: 4, life: 0.6, size: 0.45 });
       drainStream(game, p, opts.to);
@@ -102,25 +132,29 @@ function areaFx(game, name, pos, r, color) {
   const E = game.effects;
   const p = pos.clone();
   switch (name) {
-    case 'quake':
-      E.ringWave(p, '#d0a060', r, 0.7);
-      E.ringWave(p, '#ffffff', r * 0.7, 0.5);
-      FX.ring(p.x, p.y + 0.2, p.z, r * 0.6, 40, { color: '#8a7050', speed: 6, vy: 3, life: 0.8, size: 0.9, additive: false, alpha: 0.7, gravity: 8 });
-      for (let i = 0; i < 12; i++) { const a = Math.random() * 6.28, rr = Math.random() * r; FX.burst(p.x + Math.cos(a) * rr, p.y, p.z + Math.sin(a) * rr, 3, { color: '#6a5a40', speed: 4, life: 0.8, size: 0.4, additive: false, alpha: 0.9, gravity: 12, up: 4 }); }
-      game.shake(0.5);
+    case 'quake': {
+      // землетрясение: волна, радиальные разломы с шипами, летящие камни
+      E.shockwave(p, '#d09a50', r * 1.1, 0.7, true);
+      const sy = (x, z) => game.world.standY(x, z);
+      for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + Math.random() * 0.3; E.fissure(p.clone(), V(Math.cos(a), 0, Math.sin(a)), r, '#ff9a40', sy); }
+      game.shake(0.8);
       break;
+    }
     case 'harvest':
       E.spectralScythe(p, '#40e0d0', r, 0.55, 1.15);
       E.ringWave(p, '#40e0d0', r, 0.5);
       break;
-    case 'whirl': case 'runespin': {
-      const c = name === 'runespin' ? '#ff8a30' : name === 'harvest' ? '#40e0d0' : '#c0d0ff';
-      for (let k = 0; k < 3; k++) E.slashArc(p.clone().setY(p.y + 1), k * 2.1, c, r, 0.35);
-      FX.ring(p.x, p.y + 1, p.z, r * 0.8, 36, { color: c, speed: 2, life: 0.5, size: 0.4 });
+    case 'whirl': case 'runespin': case 'bladestorm': {
+      const c = name === 'runespin' ? '#ff7a20' : name === 'bladestorm' ? '#ff4050' : '#b8ccff';
+      E.tornado(p, c, r * 0.75, 3.2, 0.7, game.player.model.root);
+      for (let k = 0; k < 4; k++) game.schedule(k * 0.08, () => E.crescent(game.player.pos.clone().setY(game.player.pos.y + 1.0), k * 1.57 + Math.random(), c, r * 0.85, { dur: 0.3, roll: (Math.random() - 0.5) * 0.6, grow: 0.3 }));
       if (name === 'runespin') E.runeDecal(p, '#ff7020', r, 0.8, 4);
+      FX.ring(p.x, p.y + 1, p.z, r * 0.8, 40, { color: c, speed: 3, life: 0.5, size: 0.35 });
       break;
     }
     case 'frostnova':
+      E.iceSpikes(p, r, 22, (x, z) => game.world.standY(x, z));
+      E.shockwave(p, '#a0e8ff', r, 0.6, false);
       E.ringWave(p, '#a0e8ff', r, 0.6);
       FX.ring(p.x, p.y + 0.5, p.z, 0.5, 60, { color: ['#a0e8ff', '#ffffff'], speed: r * 2.2, life: 0.6, size: 0.6, drag: 0.92 });
       E.runeDecal(p, '#80d0ff', r, 1.5, 1);
@@ -134,31 +168,49 @@ function areaFx(game, name, pos, r, color) {
         const a = Math.random() * 6.28, rr = Math.random() * r * 0.8;
         const tp = p.clone().add(V(Math.cos(a) * rr, 0, Math.sin(a) * rr));
         const m = new THREE.Mesh(new THREE.DodecahedronGeometry(0.6 + Math.random() * 0.6, 0), new THREE.MeshStandardMaterial({ color: '#6a6058', roughness: 0.9, flatShading: true }));
-        game.effects.dropFromSky(tp, m, 0.45 + i * 0.06, () => { FX.burst(tp.x, tp.y + 0.3, tp.z, 14, { color: '#7a6a50', speed: 5, life: 0.7, size: 0.6, additive: false, alpha: 0.8, gravity: 10, up: 3 }); });
+        m.castShadow = true;
+        game.effects.dropFromSky(tp, m, 0.45 + i * 0.06, () => { FX.burst(tp.x, tp.y + 0.3, tp.z, 14, { color: '#7a6a50', speed: 5, life: 0.7, size: 0.6, additive: false, alpha: 0.8, gravity: 10, up: 3 }); E.shockwave(tp, '#c09060', 2.2, 0.4, true); });
       }
       game.schedule(0.5, () => game.shake(0.4));
       break;
     }
-    case 'judgement': case 'solar':
-      game.effects.pillar(p, name === 'solar' ? '#ffb030' : '#ffe080', r * 0.45, 20, 0.9);
-      E.ringWave(p, '#fff0a0', r, 0.7);
-      E.runeDecal(p, '#ffd040', r, 1.2, 2);
-      FX.burst(p.x, p.y + 1, p.z, 60, { color: ['#fff0a0', '#ffd040', '#ffffff'], speed: 8, life: 0.8, size: 0.5 });
-      if (name === 'solar') game.effects.explosion(p.clone().setY(p.y + 2), '#ffa020', 2.5);
+    case 'judgement':
+      // гигантский меч света падает с неба
+      E.runeDecal(p, '#ffd040', r, 1.4, 2);
+      E.giantSword(p, '#ffe070', () => { E.godRays(p, '#fff0a0', 1.0, r * 0.5); FX.burst(p.x, p.y + 1, p.z, 70, { color: ['#fff0a0', '#ffd040', '#ffffff'], speed: 9, life: 0.8, size: 0.45 }); game.shake(0.7); });
       break;
+    case 'solar': {
+      // маленькое солнце опускается и взрывается
+      const sun = new THREE.Group();
+      const core = new THREE.Mesh(new THREE.IcosahedronGeometry(2.0, 4), fireMat('#ff8a10', '#fff0a0', { disp: 0.6 }));
+      const corona = new THREE.Mesh(new THREE.IcosahedronGeometry(3.2, 3), fireMat('#ff4000', '#ffb040', { disp: 1.0 }));
+      corona.material.uniforms.uAlpha.value = 0.5;
+      sun.add(core, corona);
+      const start = p.clone().setY(p.y + 16);
+      sun.position.copy(start);
+      E.runeDecal(p, '#ffb030', r, 1.4, 2);
+      E.add(sun, 0.9, (dt, k) => { sun.position.lerpVectors(start, p.clone().setY(p.y + 2), k * k); sun.rotation.y += dt * 2; }, () => {
+        E.explosion(p.clone().setY(p.y + 2), '#ffa020', 3.2);
+        E.shockwave(p, '#ffb040', r, 0.7, true);
+        game.shake(0.9);
+      });
+      E.flash(p.clone().setY(p.y + 8), '#ffb040', 60, 1.0, 40);
+      break;
+    }
     case 'phantomblades':
       for (let i = 0; i < 6; i++) {
         const a = i / 6 * 6.28, rr = r * 0.6;
         const tp = p.clone().add(V(Math.cos(a) * rr, 0, Math.sin(a) * rr));
         const sw = new THREE.Group();
-        const bl = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.6, 0.03), new THREE.MeshBasicMaterial({ color: '#a0c0ff', transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending }));
+        const bl = new THREE.Mesh(new THREE.BoxGeometry(0.22, 2.8, 0.05), energyMat('#9ab8ff', { scale: 2, speed: 2, rim: 1, rimA: 0.6 }));
         bl.position.y = 1.3; sw.add(bl);
         const cg = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.1, 0.1), bl.material); cg.position.y = 2.7; sw.add(cg);
-        game.effects.dropFromSky(tp, sw, 0.35 + i * 0.07, () => { FX.burst(tp.x, tp.y + 0.3, tp.z, 18, { color: ['#a0c0ff', '#ffffff'], speed: 5, life: 0.5, size: 0.4 }); }, 14);
+        game.effects.dropFromSky(tp, sw, 0.35 + i * 0.07, () => { FX.burst(tp.x, tp.y + 0.3, tp.z, 18, { color: ['#a0c0ff', '#ffffff'], speed: 5, life: 0.5, size: 0.4 }); E.shockwave(tp, '#a0c0ff', 1.8, 0.35, false); }, 14);
       }
       E.runeDecal(p, '#80a0ff', r, 1.2, 3);
       break;
     case 'vines':
+      E.vines(p, r, 26, (x, z) => game.world.standY(x, z));
       E.runeDecal(p, '#50c040', r, 4, 0.5);
       for (let i = 0; i < 40; i++) { const a = Math.random() * 6.28, rr = Math.random() * r; FX.emit({ x: p.x + Math.cos(a) * rr, y: p.y + 0.1, z: p.z + Math.sin(a) * rr, vy: 2 + Math.random() * 2, life: 1.0, size: 0.4, color: Math.random() < 0.5 ? '#50c040' : '#a0ff60', drag: 0.9 }); }
       break;
@@ -184,8 +236,15 @@ function areaFx(game, name, pos, r, color) {
       }
       break;
     }
-    case 'voidrift':
+    case 'voidrift': {
+      // чёрная дыра с вращающимся аккреционным диском
+      const disk = new THREE.Mesh(new THREE.RingGeometry(1.4, r * 0.7, 48, 2), energyMat('#9040ff', { scale: 6, speed: 3, rim: 1, rimA: 0.2 }));
+      disk.rotation.x = -Math.PI / 2 + 0.25; disk.position.copy(p).setY(p.y + 1.5);
+      E.add(disk, 0.5, (dt, k) => { disk.rotation.z -= dt * 8; disk.material.uniforms.uAlpha.value = Math.sin(k * Math.PI); disk.scale.setScalar(1.2 - k * 0.4); });
       E.runeDecal(p, '#7020c0', r, 0.6, -4);
+    }
+    // eslint-disable-next-line no-fallthrough
+    case 'voidcore':
       FX.ring(p.x, p.y + 1, p.z, r, 40, { color: ['#a050ff', '#300850'], speed: -r * 1.5, life: 0.6, size: 0.6, drag: 1 });
       const core = new THREE.Mesh(new THREE.SphereGeometry(1.2, 16, 12), new THREE.MeshBasicMaterial({ color: '#000000' }));
       core.position.copy(p).setY(p.y + 1.5);
@@ -202,22 +261,39 @@ function selfFx(game, name, ent, color) {
   const E = game.effects;
   const p = ent.pos.clone();
   switch (name) {
-    case 'shout':
-      E.ringWave(p, '#ff8040', 12, 0.8, 0.5);
-      E.ringWave(p, '#ffffff', 8, 0.6, 1.2);
-      FX.burst(p.x, p.y + 1.6, p.z, 30, { color: ['#ff8040', '#ffd060'], speed: 6, life: 0.6, size: 0.4, flat: true });
-      game.shake(0.25);
+    case 'shout': case 'roar': {
+      // боевой клич: несколько звуковых волн, пыль сдувает ветром, аура
+      const c = name === 'roar' ? '#ff3a20' : '#ff9a40';
+      for (let i = 0; i < 3; i++) game.schedule(i * 0.12, () => E.shockwave(ent.pos.clone(), c, 9 + i * 3, 0.7, false));
+      E.attachAura(ent.model.root, c, 8, 1.5);
+      FX.burst(p.x, p.y + 1.6, p.z, 40, { color: [c, '#ffd060'], speed: 8, life: 0.6, size: 0.4, flat: true });
+      game.shake(0.45);
       break;
-    case 'stoneskin': case 'bastion':
-      E.sphere(p, name === 'bastion' ? '#80a8e0' : '#a0a0a0', 1.4, name === 'bastion' ? 12 : 8, ent.model.root);
+    }
+    case 'stoneskin':
+      E.orbitRocks(ent.model.root, 10, 1.1, 8);
+      E.dome(ent.model.root, '#b0a890', 1.3, 8);
       FX.burst(p.x, p.y + 1, p.z, 30, { color: ['#a0a0a0', '#c0c0c0'], speed: 3, life: 0.8, size: 0.5, additive: false, alpha: 0.8 });
       break;
-    case 'ancestral': case 'avatar': case 'frenzy':
+    case 'bastion':
+      E.dome(ent.model.root, '#80b8ff', 1.6, 12);
+      E.shockwave(p, '#80b8ff', 3, 0.5, false);
+      break;
+    case 'ancestral':
+      E.ghostClone(ent.model, '#ff7a30', 2.6, 1.7, 0.9);
+      E.attachAura(ent.model.root, color, 12, 1.6);
+      E.tornado(p, '#ff5020', 1.6, 3.5, 1.0, ent.model.root);
+      game.shake(0.5);
+      break;
+    case 'avatar': case 'frenzy':
       E.attachAura(ent.model.root, color, name === 'frenzy' ? 3 : 12, 1.6);
       E.pillar(p, color, 1.0, 8, 0.6);
       FX.burst(p.x, p.y + 1, p.z, 40, { color: [color, '#ffffff'], speed: 6, life: 0.7, size: 0.5 });
       break;
     case 'mountainheart': case 'holylight':
+      E.godRays(p, name === 'holylight' ? '#fff0a0' : '#ffa060', 1.5, 2);
+      if (name === 'holylight') E.dome(ent.model.root, '#ffe080', 1.4, 1.6);
+      else E.rocks(p, 10, 2, 0.3);
       E.pillar(p, name === 'holylight' ? '#fff0a0' : '#ff9060', 1.2, 14, 0.9);
       E.runeDecal(p, name === 'holylight' ? '#ffe080' : '#ff9060', 3, 1.5, 1);
       FX.burst(p.x, p.y + 1, p.z, 40, { color: ['#a0ff90', '#ffffff', '#fff0a0'], speed: 3, life: 1.2, size: 0.4, up: 2 });
@@ -231,10 +307,14 @@ function selfFx(game, name, ent, color) {
     case 'dust':
       FX.burst(p.x, p.y + 0.3, p.z, 20, { color: '#9a8a70', speed: 3, life: 0.8, size: 0.8, additive: false, alpha: 0.6, grow: 1 });
       break;
-    case 'blink':
-      FX.burst(p.x, p.y + 1, p.z, 40, { color: ['#c0a0ff', '#ffffff'], speed: 5, life: 0.5, size: 0.4 });
+    case 'blink': {
+      FX.burst(p.x, p.y + 1, p.z, 50, { color: ['#c0a0ff', '#ffffff', '#7040ff'], speed: 6, life: 0.5, size: 0.4 });
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.06, 8, 40), energyMat('#b090ff', { scale: 4, speed: 4 }));
+      ring.position.copy(p).setY(p.y + 1); ring.rotation.x = Math.PI / 2;
+      E.add(ring, 0.4, (dt, k) => { ring.scale.setScalar(1 + k * 1.5); ring.position.y = p.y + 0.2 + k * 2; ring.material.uniforms.uAlpha.value = 1 - k; });
       E.ringWave(p, '#c0a0ff', 3, 0.4);
       break;
+    }
   }
 }
 
@@ -278,12 +358,14 @@ export function castSkill(game, P, skill, target) {
   const strikeDelay = 0.26 / P.hasteMul;
   switch (skill.type) {
     case 'melee': {
-      game.schedule(strikeDelay, () => {
+      game.schedule(strikeDelay + (anim === 'slam' ? 0.16 : 0.06), () => {
         if (!target || !target.alive) return;
         const c = target.center();
-        E.slashArc(P.pos.clone().setY(P.pos.y + 1.1), P.yaw, skill.color, 2.2, 0.25, 0.3);
+        const yaw = P.yaw;
+        if (skill.fx !== 'impact') E.crescent(P.pos.clone().setY(P.pos.y + 1.1).add(V(Math.sin(yaw) * 0.6, 0, Math.cos(yaw) * 0.6)), yaw, skill.color, 2.4, { dur: 0.3, travel: 1.4, roll: anim === 'slash2' ? -0.6 : 0.6 });
         apply(target, skill.dmg);
-        hitFx(game, skill.fx, c);
+        hitFx(game, skill.fx, c, { target, stun: skill.stun, yaw });
+        game.shake(0.2);
       });
       break;
     }
@@ -385,19 +467,28 @@ export function castSkill(game, P, skill, target) {
         const to = from.clone().addScaledVector(dir, len);
         const hit = game.combat.enemiesInLine('player', P.pos, dir, len, skill.width);
         if (skill.fx === 'fissure') {
-          for (let i = 1; i < len; i += 0.8) {
-            const pp = P.pos.clone().addScaledVector(dir, i);
-            game.schedule(i * 0.02, () => FX.burst(pp.x, game.world.standY(pp.x, pp.z) + 0.2, pp.z, 4, { color: '#8a7050', speed: 3, up: 4, life: 0.8, size: 0.6, additive: false, alpha: 0.9, gravity: 12 }));
-          }
-          game.shake(0.3);
+          E.fissure(P.pos.clone(), dir, len, '#ff8a30', (x, z) => game.world.standY(x, z));
+          E.shockwave(P.pos.clone(), '#d09a50', 2.5, 0.4, true);
+          game.shake(0.5);
         } else if (skill.fx === 'piercearrow') {
           E.projectile('bigarrow', from, () => to, 70, () => {});
-          E.beam(from, to, '#ffffff', 0.08, 0.4);
+          E.beam(from, to, '#e8f0ff', 0.08, 0.4);
+          for (let i = 1; i <= 4; i++) game.schedule(i * 0.06, () => {
+            const rp = from.clone().addScaledVector(dir, len * i / 5);
+            const ring = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.05, 6, 32), energyMat('#d8e8ff', { scale: 3, speed: 4 }));
+            ring.position.copy(rp); ring.lookAt(rp.clone().add(dir));
+            E.add(ring, 0.4, (dt, k) => { ring.scale.setScalar(1 + k * 2); ring.material.uniforms.uAlpha.value = 1 - k; });
+          });
         } else if (skill.fx === 'scytheline') {
           E.flyingScythe(from.clone(), to.clone(), '#30e0c8', 0.55);
           for (let i = 0; i < 6; i++) game.schedule(i * 0.07, () => E.slashArc(from.clone().addScaledVector(dir, 3 + i * (len - 3) / 6), Math.atan2(dir.x, dir.z), '#30d0c0', 3, 0.35, 0));
         } else {
           E.beam(from, to, skill.color, 0.5, 0.6);
+          const len2 = from.distanceTo(to);
+          const bm = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, len2, 20, 1, true).rotateX(Math.PI / 2), energyMat(skill.color, { scale: 8, speed: 5 }));
+          bm.position.copy(from).lerp(to, 0.5); bm.lookAt(to);
+          E.add(bm, 0.6, (dt, k) => { bm.scale.set(1 - k * 0.7, 1 - k * 0.7, 1); bm.material.uniforms.uAlpha.value = 1 - k; });
+          E.godRays(to.clone().setY(game.world.standY(to.x, to.z)), skill.color, 0.8, 1.5);
         }
         for (const e of hit) { apply(e, skill.dmg); hitFx(game, 'default', e.center(), { color: skill.color }); }
       });
@@ -416,6 +507,7 @@ export function castSkill(game, P, skill, target) {
         }
         let from = handPos();
         let mul = skill.dmg;
+        if (skill.id === 'a_storm' && hitList[0]) E.skyBolt(hitList[0].pos.clone(), '#90c8ff');
         hitList.forEach((e, i) => {
           const f = from.clone();
           game.schedule(i * 0.12, () => {
@@ -478,8 +570,9 @@ export function castSkill(game, P, skill, target) {
         FX.emit({ x: P.pos.x, y: P.pos.y + 0.3, z: P.pos.z, life: 0.6, size: 0.9, color: '#9a8a70', additive: false, alpha: 0.4, grow: 1 });
         FX.emit({ x: P.pos.x, y: P.pos.y + 1, z: P.pos.z, life: 0.25, size: 0.6, color: skill.color });
       }, () => {
-        if (target.alive) { apply(target, skill.dmg); hitFx(game, 'shieldflash', target.center()); }
-        game.shake(0.3);
+        if (target.alive) { apply(target, skill.dmg); hitFx(game, 'shieldflash', target.center(), { target, stun: skill.stun }); }
+        E.shockwave(P.pos.clone(), skill.color, 3.5, 0.45, true);
+        game.shake(0.45);
       });
       break;
     }
@@ -488,6 +581,7 @@ export function castSkill(game, P, skill, target) {
       const dir = V(-Math.sin(P.yaw), 0, -Math.cos(P.yaw));
       const end = start.clone().addScaledVector(dir, skill.dist);
       selfFx(game, 'dust', P);
+      E.crescent(P.pos.clone().setY(P.pos.y + 1), P.yaw + Math.PI, '#c8f0ff', 2.2, { dur: 0.35, travel: 3, tilt: Math.PI / 2 });
       P.dashing = 0.4;
       E.add(null, 0.4, (dt, k) => {
         P.pos.x = start.x + (end.x - start.x) * k;

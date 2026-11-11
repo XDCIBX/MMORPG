@@ -3,6 +3,53 @@ import * as THREE from 'three';
 import { FX } from './particles.js';
 import { ringTexture, runeCircle } from '../core/textures.js';
 import { gemMat, glowMat, boneMat, metalMat, woodMat, basicMat } from '../chars/materials.js';
+import { RibbonTrail } from './trails.js';
+
+// ---------- Шейдерные материалы эффектов ----------
+const NOISE_GLSL = `
+float h3(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+float n3(vec3 p){ vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(h3(i), h3(i + vec3(1,0,0)), f.x), mix(h3(i + vec3(0,1,0)), h3(i + vec3(1,1,0)), f.x), f.y),
+             mix(mix(h3(i + vec3(0,0,1)), h3(i + vec3(1,0,1)), f.x), mix(h3(i + vec3(0,1,1)), h3(i + vec3(1,1,1)), f.x), f.y), f.z); }
+float fbm3(vec3 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a * n3(p); p *= 2.07; a *= 0.5; } return s; }`;
+const fxTime = { value: 0 };
+// Огненный шар: клубящееся пламя с ядром
+export function fireMat(c1 = '#ff6a10', c2 = '#ffd060', opts = {}) {
+  return new THREE.ShaderMaterial({
+    uniforms: { uTime: fxTime, uC1: { value: new THREE.Color(c1) }, uC2: { value: new THREE.Color(c2) }, uAlpha: { value: 1 }, uSeed: { value: Math.random() * 10 } },
+    vertexShader: `varying vec3 vP; varying vec3 vN; varying vec3 vV; uniform float uTime; uniform float uSeed;
+      ${NOISE_GLSL}
+      void main(){ vec3 p = position; float d = fbm3(normal * 2.2 + vec3(0.0, -uTime * 2.5, uSeed)) ; p += normal * (d - 0.5) * ${(opts.disp || 0.35).toFixed(2)};
+        vec4 w = modelMatrix * vec4(p, 1.0); vP = position * 2.0; vN = normalize(normalMatrix * normal); vV = normalize(-(viewMatrix * w).xyz);
+        gl_Position = projectionMatrix * viewMatrix * w; }`,
+    fragmentShader: `varying vec3 vP; varying vec3 vN; varying vec3 vV; uniform float uTime; uniform vec3 uC1; uniform vec3 uC2; uniform float uAlpha; uniform float uSeed;
+      ${NOISE_GLSL}
+      void main(){ float f = fbm3(vP * 1.6 + vec3(0.0, -uTime * 3.0, uSeed));
+        float rim = pow(1.0 - abs(dot(vN, vV)), 1.5);
+        vec3 c = mix(uC2 * 2.2, uC1 * 1.4, smoothstep(0.35, 0.75, f + rim * 0.4));
+        float a = smoothstep(0.2, 0.55, f + (1.0 - rim) * 0.35) * uAlpha;
+        gl_FragColor = vec4(c, a); }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+}
+// Энергетическая оболочка: бегущий шум, яркий край (щиты, вихри, кольца, столпы)
+export function energyMat(color, opts = {}) {
+  return new THREE.ShaderMaterial({
+    uniforms: { uTime: fxTime, uC: { value: new THREE.Color(color) }, uAlpha: { value: 1 }, uSpeed: { value: opts.speed || 1 }, uScale: { value: opts.scale || 3 } },
+    vertexShader: `varying vec2 vUv; varying vec3 vN; varying vec3 vV;
+      void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = normalize(-(viewMatrix * w).xyz); gl_Position = projectionMatrix * viewMatrix * w; }`,
+    fragmentShader: `varying vec2 vUv; varying vec3 vN; varying vec3 vV; uniform float uTime; uniform vec3 uC; uniform float uAlpha; uniform float uSpeed; uniform float uScale;
+      ${NOISE_GLSL}
+      void main(){ float f = fbm3(vec3(vUv * vec2(uScale * 2.0, uScale), uTime * 0.6) + vec3(uTime * uSpeed, -uTime * uSpeed * 1.5, 0.0));
+        float rim = pow(1.0 - abs(dot(vN, vV)), ${(opts.rim || 2.0).toFixed(1)});
+        float band = smoothstep(0.45, 0.8, f);
+        float edge = ${opts.fadeV ? 'smoothstep(0.0, 0.15, vUv.y) * smoothstep(1.0, 0.6, vUv.y)' : '1.0'};
+        vec3 c = uC * (0.6 + band * 1.8) + vec3(1.0) * band * band * 0.6;
+        gl_FragColor = vec4(c, (band * 0.75 + rim * ${(opts.rimA || 0.6).toFixed(2)}) * uAlpha * edge); }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  });
+}
+export function tickFx(dt) { fxTime.value += dt; }
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -40,6 +87,7 @@ export class Effects {
   }
 
   update(dt) {
+    tickFx(dt);
     for (const l of this.lights) {
       const u = l.userData;
       if (u.t < u.dur) {
@@ -188,9 +236,9 @@ export class Effects {
     FX.burst(pos.x, pos.y, pos.z, 18 * size, { color: '#3a3030', speed: 3 * size, life: 1.4, size: 1.4 * size, additive: false, alpha: 0.5, up: 1.5, drag: 0.92, grow: 1.5 });
     this.ringWave(pos.clone().setY(pos.y - 0.5), color, 4 * size, 0.5);
     this.flash(pos, color, 50 * size, 0.4, 18);
-    const m = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), new THREE.MeshBasicMaterial({ color: '#fff4c0', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 3), fireMat(color, '#ffe8a0', { disp: 0.6 }));
     m.position.copy(pos);
-    this.add(m, 0.3, (dt, k) => { m.scale.setScalar(0.4 + k * 2.4 * size); m.material.opacity = 1 - k; });
+    this.add(m, 0.6, (dt, k) => { m.scale.setScalar((0.5 + Math.sqrt(k) * 2.6) * size); m.material.uniforms.uAlpha.value = 1 - k * k; });
   }
 
   // Летящий снаряд. target: функция, возвращающая Vector3 (или null)
@@ -199,6 +247,13 @@ export class Effects {
     obj.position.copy(from);
     const trail = PROJ_TRAIL[kind] || PROJ_TRAIL.magic;
     const last = from.clone();
+    // светящаяся лента за снарядом
+    const rb = PROJ_RIBBON[kind];
+    let ribbon = null;
+    if (rb && this.camera) {
+      ribbon = new RibbonTrail(this.scene, opts.color || rb[0], rb[1], rb[2], rb[3] || '#ffffff');
+      ribbon.push(from);
+    }
     let tgt = targetFn();
     const it = this.add(obj, 6, (dt) => {
       const t = targetFn() || tgt;
@@ -213,6 +268,7 @@ export class Effects {
       obj.position.addScaledVector(dir, step);
       obj.quaternion.setFromUnitVectors(UP, dir);
       if (obj.userData.spin) obj.children[0].rotation.y += dt * 20;
+      if (ribbon) { ribbon.push(obj.position); ribbon.update(dt, this.camera.position); }
       // шлейф
       const n = trail.rate;
       for (let i = 0; i < n; i++) {
@@ -221,6 +277,10 @@ export class Effects {
       }
       last.copy(obj.position);
     });
+    if (ribbon) {
+      const end0 = it.onEnd;
+      it.onEnd = () => { end0 && end0(); this.add(null, 1, (dt) => !ribbon.update(dt, this.camera.position), () => ribbon.dispose()); };
+    }
     if (PROJ_LIGHT[kind]) {
       const l = this.flash(from, PROJ_LIGHT[kind], 12, 6, 8);
       l.userData.follow = obj;
@@ -234,6 +294,8 @@ export class Effects {
   meteor(pos, color = '#ff5020', onImpact) {
     const start = pos.clone().add(new THREE.Vector3(-8, 26, -5));
     const m = new THREE.Mesh(new THREE.IcosahedronGeometry(1.1, 1), new THREE.MeshStandardMaterial({ color: '#3a1a10', emissive: color, emissiveIntensity: 2.5, roughness: 0.8, flatShading: true }));
+    const fire = new THREE.Mesh(new THREE.IcosahedronGeometry(1.9, 3), fireMat('#ff3a00', '#ffc040', { disp: 0.7 }));
+    m.add(fire);
     m.position.copy(start);
     const l = this.flash(start, color, 40, 0.9, 25);
     l.userData.follow = m;
@@ -423,6 +485,243 @@ export class Effects {
       if (Math.random() < 0.5) { const p = new THREE.Vector3(); chestObj.getWorldPosition(p); FX.emit({ x: p.x + (Math.random() - 0.5) * 2.4, y: p.y + Math.random() * 1.2, z: p.z + (Math.random() - 0.5) * 1, vy: -0.5, life: 0.8, size: 0.35, color }); }
     }, () => g.removeFromParent());
   }
+
+  // ======== Зрелищные эффекты умений ========
+  // Ударная волна: светящееся кольцо + пыль + разлетающиеся камни
+  shockwave(pos, color, radius = 6, dur = 0.6, debris = true) {
+    const g = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.9, 48, 1, true), energyMat(color, { scale: 6, speed: 2, fadeV: true }));
+    g.position.copy(pos); g.position.y += 0.4;
+    this.add(g, dur, (dt, k) => {
+      const r = 0.5 + radius * (1 - Math.pow(1 - k, 3));
+      g.scale.set(r, 1 - k * 0.6, r);
+      g.material.uniforms.uAlpha.value = 1 - k;
+    });
+    this.ringWave(pos, color, radius * 1.1, dur * 0.9);
+    FX.ring(pos.x, pos.y + 0.3, pos.z, radius * 0.3, 36, { color: '#7a6a52', speed: radius * 2.2, vy: 2.5, life: 0.9, size: 1.3, additive: false, alpha: 0.6, gravity: 5, grow: 1.2, drag: 0.92 });
+    if (debris) this.rocks(pos, Math.round(radius * 2), radius * 0.6);
+  }
+  // Камни-обломки, вылетающие из земли
+  rocks(pos, n, spread = 3, size = 0.25) {
+    const mat = this._rockMat || (this._rockMat = new THREE.MeshStandardMaterial({ color: '#6e655a', roughness: 0.95, flatShading: true }));
+    for (let i = 0; i < n; i++) {
+      const m = new THREE.Mesh(new THREE.DodecahedronGeometry(size * (0.5 + Math.random()), 0), mat);
+      const a = Math.random() * Math.PI * 2, r = Math.random() * spread;
+      m.position.set(pos.x + Math.cos(a) * r, pos.y + 0.1, pos.z + Math.sin(a) * r);
+      m.castShadow = true;
+      const v = new THREE.Vector3(Math.cos(a) * (2 + Math.random() * 3), 4 + Math.random() * 5, Math.sin(a) * (2 + Math.random() * 3));
+      this.add(m, 1.3, (dt, k) => {
+        v.y -= 18 * dt; m.position.addScaledVector(v, dt);
+        if (m.position.y < pos.y) { m.position.y = pos.y; v.multiplyScalar(0.4); v.y = Math.abs(v.y) * 0.3; }
+        m.rotation.x += dt * 6; m.rotation.z += dt * 4;
+        if (k > 0.8) m.scale.setScalar((1 - k) * 5);
+      });
+    }
+  }
+  // Летящий серп-волна от клинка
+  crescent(pos, yaw, color, radius = 2.4, opts = {}) {
+    const shape = new THREE.Shape();
+    const R = radius, r = radius * (opts.thin || 0.72);
+    shape.absarc(0, 0, R, -Math.PI * 0.42, Math.PI * 0.42, false);
+    shape.absarc(-radius * 0.18, 0, r, Math.PI * 0.42, -Math.PI * 0.42, true);
+    const geo = new THREE.ShapeGeometry(shape, 24);
+    const m = new THREE.Mesh(geo, energyMat(color, { scale: 4, speed: 3, rim: 1, rimA: 0.3 }));
+    const g = new THREE.Group(); g.add(m);
+    m.rotation.x = -Math.PI / 2; m.rotation.z = Math.PI / 2 + (opts.roll || 0);
+    g.position.copy(pos); g.rotation.y = yaw;
+    if (opts.tilt) g.rotation.z = opts.tilt;
+    const dir = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+    const travel = opts.travel || 0, dur = opts.dur || 0.35;
+    const start = pos.clone();
+    this.add(g, dur, (dt, k) => {
+      g.position.copy(start).addScaledVector(dir, travel * k);
+      g.scale.setScalar(0.7 + k * (opts.grow || 0.6));
+      m.material.uniforms.uAlpha.value = k < 0.15 ? k / 0.15 : 1 - (k - 0.15) / 0.85;
+      if (travel && Math.random() < 0.7) FX.emit({ x: g.position.x, y: g.position.y, z: g.position.z, vx: (Math.random() - 0.5), vy: Math.random(), vz: (Math.random() - 0.5), life: 0.4, size: 0.4, color });
+    });
+    return g;
+  }
+  // Вихрь (торнадо) из энергии
+  tornado(pos, color, radius = 3, height = 4, dur = 1, follow = null) {
+    const pts = [];
+    for (let i = 0; i <= 12; i++) { const t = i / 12; pts.push(new THREE.Vector2(radius * (0.25 + t * t * 0.9), t * height)); }
+    const g = new THREE.Group();
+    const layers = [];
+    for (let k = 0; k < 2; k++) {
+      const m = new THREE.Mesh(new THREE.LatheGeometry(pts, 32), energyMat(color, { scale: 3 + k * 2, speed: 2.5 + k, fadeV: true, rim: 1.2, rimA: 0.25 }));
+      m.scale.setScalar(1 - k * 0.2);
+      g.add(m); layers.push(m);
+    }
+    g.position.copy(pos);
+    this.add(g, dur, (dt, k) => {
+      if (follow) { g.position.copy(follow.position); }
+      layers[0].rotation.y += dt * 9; layers[1].rotation.y -= dt * 12;
+      const a = k < 0.12 ? k / 0.12 : k > 0.8 ? (1 - k) / 0.2 : 1;
+      for (const l of layers) l.material.uniforms.uAlpha.value = a;
+      if (Math.random() < 0.8) { const ang = Math.random() * 6.28; FX.emit({ x: g.position.x + Math.cos(ang) * radius, y: g.position.y + Math.random() * height, z: g.position.z + Math.sin(ang) * radius, vx: -Math.sin(ang) * 6, vz: Math.cos(ang) * 6, vy: 2, life: 0.5, size: 0.35, color }); }
+    });
+  }
+  // Разлом земли: каменные шипы вырываются по линии, в трещине светится энергия
+  fissure(from, dir, len, color = '#ff8a30', standY = null) {
+    const mat = this._spikeMat || (this._spikeMat = new THREE.MeshStandardMaterial({ color: '#5e564c', roughness: 0.9, flatShading: true }));
+    const n = Math.floor(len / 1.1);
+    for (let i = 1; i <= n; i++) {
+      const p = from.clone().addScaledVector(dir, i * 1.1);
+      p.x += (Math.random() - 0.5) * 0.8; p.z += (Math.random() - 0.5) * 0.8;
+      if (standY) p.y = standY(p.x, p.z);
+      const h = 1.0 + Math.random() * 1.4;
+      const m = new THREE.Mesh(new THREE.ConeGeometry(0.35 + Math.random() * 0.25, h, 5), mat);
+      m.castShadow = true;
+      m.rotation.set((Math.random() - 0.5) * 0.6, Math.random() * 3, (Math.random() - 0.5) * 0.6);
+      const delay = i * 0.035;
+      this.add(m, 1.5 + delay, (dt, k) => {
+        const t = k * (1.5 + delay) - delay;
+        if (t < 0) { m.position.set(p.x, p.y - h, p.z); return; }
+        const up = t < 0.12 ? t / 0.12 : t > 1.1 ? Math.max(0, 1 - (t - 1.1) / 0.4) : 1;
+        m.position.set(p.x, p.y - h / 2 + up * h * 0.75, p.z);
+        if (t < 0.04) { FX.burst(p.x, p.y + 0.2, p.z, 6, { color: '#6a5a44', speed: 4, up: 4, life: 0.8, size: 0.6, additive: false, alpha: 0.85, gravity: 10 }); FX.burst(p.x, p.y + 0.1, p.z, 5, { color, speed: 2, up: 3, life: 0.5, size: 0.4 }); }
+      });
+    }
+    // светящаяся трещина
+    const crack = new THREE.Mesh(new THREE.PlaneGeometry(0.5, len), energyMat(color, { scale: 8, speed: 1.5, rim: 1 }));
+    crack.rotation.x = -Math.PI / 2; crack.rotation.z = -Math.atan2(dir.x, dir.z);
+    const mid = from.clone().addScaledVector(dir, len / 2);
+    crack.position.set(mid.x, (standY ? standY(mid.x, mid.z) : from.y) + 0.06, mid.z);
+    this.add(crack, 1.8, (dt, k) => { crack.material.uniforms.uAlpha.value = Math.min(1, k * 8) * (1 - k); crack.scale.y = Math.min(1, k * 6); });
+  }
+  // Ледяные кристаллы, вырастающие кольцом
+  iceSpikes(center, radius, n, standY = null) {
+    const mat = this._iceMat || (this._iceMat = new THREE.MeshPhysicalMaterial({ color: '#bfe8ff', roughness: 0.08, metalness: 0.1, transmission: 0.0, clearcoat: 1, emissive: '#2a6a9a', emissiveIntensity: 0.5, transparent: true, opacity: 0.88 }));
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2 + Math.random() * 0.25, r = radius * (0.35 + Math.random() * 0.65);
+      const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r, y = standY ? standY(x, z) : center.y;
+      const h = 0.8 + Math.random() * 1.6;
+      const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.4, 0), mat);
+      m.scale.set(0.6, h * 1.6, 0.6);
+      m.rotation.set(Math.cos(a) * 0.4, Math.random(), -Math.sin(a) * 0.4);
+      m.castShadow = true;
+      const delay = r / radius * 0.18;
+      this.add(m, 1.6 + delay, (dt, k) => {
+        const t = k * (1.6 + delay) - delay;
+        const up = t < 0 ? 0 : t < 0.1 ? t / 0.1 : t > 1.3 ? Math.max(0, 1 - (t - 1.3) / 0.3) : 1;
+        m.position.set(x, y - h * 0.5 + up * h * 0.6, z);
+        if (t > 1.3 && t - dt < 1.3) FX.burst(x, y + h * 0.4, z, 10, { color: ['#d0f0ff', '#ffffff'], speed: 4, life: 0.5, size: 0.3, gravity: 6 });
+      });
+    }
+  }
+  // Купол-щит с переливами, следует за целью
+  dome(follow, color, r, dur) {
+    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 4), energyMat(color, { scale: 5, speed: 0.6, rim: 2.5, rimA: 0.9 }));
+    const hex = new THREE.Mesh(new THREE.IcosahedronGeometry(r * 1.01, 2), new THREE.MeshBasicMaterial({ color, wireframe: true, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false }));
+    m.add(hex);
+    return this.add(m, dur, (dt, k) => {
+      m.position.copy(follow.position); m.position.y += r * 0.55;
+      m.rotation.y += dt * 0.4;
+      const a = k < 0.06 ? k / 0.06 : k > 0.92 ? (1 - k) / 0.08 : 1;
+      m.material.uniforms.uAlpha.value = a * 0.8; hex.material.opacity = 0.25 * a * (0.7 + Math.sin(k * dur * 6) * 0.3);
+    });
+  }
+  // Божественные лучи с неба + падающие искры света
+  godRays(pos, color, dur = 1.4, radius = 3) {
+    const g = new THREE.Group();
+    const mats = [];
+    for (let i = 0; i < 9; i++) {
+      const w = 0.25 + Math.random() * 0.5, h = 24;
+      const mm = energyMat(color, { scale: 2, speed: 0.8, fadeV: true, rim: 1, rimA: 0.2 });
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(w, w * 1.6, h, 10, 1, true), mm);
+      const a = Math.random() * 6.28, r = Math.random() * radius;
+      m.position.set(Math.cos(a) * r, h / 2, Math.sin(a) * r);
+      m.rotation.set((Math.random() - 0.5) * 0.2, 0, (Math.random() - 0.5) * 0.2);
+      g.add(m); mats.push(mm);
+    }
+    g.position.copy(pos);
+    this.add(g, dur, (dt, k) => {
+      const a = k < 0.2 ? k / 0.2 : (1 - k) / 0.8;
+      for (const mm of mats) mm.uniforms.uAlpha.value = a * 0.8;
+      for (let i = 0; i < 3; i++) FX.emit({ x: pos.x + (Math.random() - 0.5) * radius * 2, y: pos.y + 6 + Math.random() * 6, z: pos.z + (Math.random() - 0.5) * radius * 2, vy: -6, life: 1, size: 0.3, color: '#fff8d0' });
+    });
+    this.flash(pos.clone().setY(pos.y + 3), color, 50, dur, 22);
+  }
+  // Гигантский световой меч падает с неба
+  giantSword(pos, color, onImpact) {
+    const g = new THREE.Group();
+    const em = energyMat(color, { scale: 3, speed: 1.5, rim: 1.5, rimA: 0.7 });
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.7, 9, 0.12), em); blade.position.y = 4.5;
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.4, 4), em); tip.position.y = -0.7; tip.rotation.y = Math.PI / 4; tip.scale.z = 0.25;
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.4, 0.4), em); guard.position.y = 9.1;
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 2, 8), em); grip.position.y = 10.3;
+    g.add(blade, tip, guard, grip);
+    const start = pos.clone().setY(pos.y + 30);
+    g.position.copy(start);
+    this.add(g, 0.55, (dt, k) => { g.position.lerpVectors(start, pos.clone().setY(pos.y + 0.6), k * k); }, () => {
+      this.shockwave(pos, color, 7, 0.7);
+      this.flash(pos.clone().setY(pos.y + 2), color, 90, 0.6, 30);
+      onImpact && onImpact();
+      this.add(g, 1.2, (dt, k) => { em.uniforms.uAlpha.value = 1 - k; g.position.y = pos.y + 0.6 - k * 2; });
+    });
+  }
+  // Призрачный двойник модели (предки / аватар)
+  ghostClone(model, color, dur = 2, scale = 1.6, offset = -1.2) {
+    const clone = model.root.clone(true);
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
+    clone.traverse(o => { if (o.isMesh) { o.material = mat; o.castShadow = false; } });
+    const base = model.root.scale.x;
+    this.add(clone, dur, (dt, k) => {
+      clone.position.copy(model.root.position);
+      clone.rotation.y = model.root.rotation.y;
+      clone.position.x -= Math.sin(clone.rotation.y) * offset; clone.position.z -= Math.cos(clone.rotation.y) * offset;
+      clone.scale.setScalar(base * scale * (1 + k * 0.1));
+      mat.opacity = 0.35 * (k < 0.15 ? k / 0.15 : (1 - k) / 0.85);
+    });
+  }
+  // Колючие лозы вырастают из земли
+  vines(center, radius, n, standY) {
+    const mat = this._vineMat || (this._vineMat = new THREE.MeshStandardMaterial({ color: '#3a6a22', roughness: 0.8 }));
+    const thorn = this._thornMat || (this._thornMat = new THREE.MeshStandardMaterial({ color: '#d0c890', roughness: 0.6 }));
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * 6.28, r = Math.random() * radius;
+      const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r, y = standY ? standY(x, z) : center.y;
+      const pts = [];
+      const h = 1.2 + Math.random() * 1.6, tw = Math.random() * 6;
+      for (let k = 0; k <= 8; k++) { const t = k / 8; pts.push(new THREE.Vector3(Math.cos(tw + t * 5) * 0.35 * t, t * h, Math.sin(tw + t * 5) * 0.35 * t)); }
+      const curve = new THREE.CatmullRomCurve3(pts);
+      const geo = new THREE.TubeGeometry(curve, 24, 0.07, 6);
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      for (let k = 2; k < 8; k++) { const p = curve.getPoint(k / 8); const c = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.18, 4), thorn); c.position.copy(p); c.rotation.z = (k % 2 ? 1 : -1) * 1.2; m.add(c); }
+      geo.setDrawRange(0, 0);
+      const total = geo.index.count;
+      this.add(m, 4, (dt, k) => {
+        const g = k < 0.1 ? k / 0.1 : 1;
+        geo.setDrawRange(0, Math.floor(total * g / 6) * 6);
+        if (k > 0.85) m.scale.setScalar((1 - k) / 0.15);
+      });
+    }
+  }
+  // Камни, кружащие вокруг цели (каменная кожа)
+  orbitRocks(follow, n, r, dur, color = '#8a8274') {
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.9, flatShading: true });
+    const g = new THREE.Group();
+    const rs = [];
+    for (let i = 0; i < n; i++) { const m = new THREE.Mesh(new THREE.DodecahedronGeometry(0.16 + Math.random() * 0.12, 0), mat); g.add(m); rs.push({ m, a: i / n * Math.PI * 2, y: 0.4 + Math.random() * 1.4, s: 1.5 + Math.random() }); }
+    this.add(g, dur, (dt, k, it) => {
+      g.position.copy(follow.position);
+      for (const q of rs) { q.a += dt * q.s; q.m.position.set(Math.cos(q.a) * r, q.y + Math.sin(q.a * 2) * 0.1, Math.sin(q.a) * r); q.m.rotation.x += dt * 3; }
+      g.scale.setScalar(k < 0.1 ? k / 0.1 : k > 0.9 ? (1 - k) / 0.1 : 1);
+      void it;
+    });
+  }
+  // Оглушение: звёзды кружат над головой
+  stunStars(targetFn, dur) {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshBasicMaterial({ color: '#ffe060', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+    for (let i = 0; i < 4; i++) { const st = new THREE.Mesh(new THREE.OctahedronGeometry(0.1, 0), mat); st.scale.y = 0.4; g.add(st); }
+    this.add(g, dur, (dt, k) => {
+      const p = targetFn(); if (!p) return true;
+      g.position.copy(p);
+      g.children.forEach((st, i) => { const a = k * dur * 5 + i * Math.PI / 2; st.position.set(Math.cos(a) * 0.45, Math.sin(a * 2) * 0.05, Math.sin(a) * 0.45); st.rotation.y += dt * 6; });
+      mat.opacity = k > 0.85 ? (1 - k) / 0.15 : 1;
+    });
+  }
 }
 
 const PROJ_TRAIL = {
@@ -444,6 +743,13 @@ const PROJ_TRAIL = {
   fire: { rate: 7, jit: 0.25, life: 0.45, size: 0.7, color: ['#ff6010', '#ffb030'] },
   spear: { rate: 1, jit: 0.02, life: 0.3, size: 0.15, color: '#ffffff', alpha: 0.4 },
   frost: { rate: 6, jit: 0.25, life: 0.5, size: 0.6, color: ['#80e0ff', '#ffffff'] },
+};
+// лента: [цвет, ширина, время жизни, цвет ядра]
+const PROJ_RIBBON = {
+  arrow: ['#c8d8ff', 0.05, 0.22], poisonarrow: ['#60ff40', 0.12, 0.4], firearrow: ['#ff7020', 0.16, 0.4, '#ffe080'], stormarrow: ['#80c0ff', 0.16, 0.4],
+  bigarrow: ['#ff3030', 0.3, 0.6, '#ffe0e0'], fireball: ['#ff5a10', 0.45, 0.45, '#ffd070'], frostbolt: ['#60c8ff', 0.25, 0.4], frost: ['#60c8ff', 0.25, 0.4],
+  magic: ['#8a80ff', 0.18, 0.3], shadowbolt: ['#7020c0', 0.35, 0.5, '#d0a0ff'], shadow: ['#6040c0', 0.2, 0.35], bonespear: ['#40ff80', 0.22, 0.4],
+  bone: ['#60ff90', 0.1, 0.25], hammer: ['#80c8ff', 0.3, 0.35], curse: ['#80ff40', 0.25, 0.45], fire: ['#ff6010', 0.3, 0.4, '#ffd070'], spear: ['#ffffff', 0.05, 0.2],
 };
 const PROJ_LIGHT = { fireball: '#ff7020', fire: '#ff7020', frostbolt: '#60c0ff', shadowbolt: '#8030ff' };
 
@@ -505,6 +811,15 @@ function buildProjectile(kind, color) {
     const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.2), gemMat('#a0e8ff', 2.5));
     c.scale.set(0.6, 1.8, 0.6); inner.add(c);
     inner.add(new THREE.Mesh(new THREE.SphereGeometry(0.4, 12, 10), glowMat('#60c0ff', 0.4)));
+  } else if (kind === 'fireball' || kind === 'fire') {
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42, 3), fireMat('#ff4a08', '#ffd060'));
+    const halo = new THREE.Mesh(new THREE.IcosahedronGeometry(0.7, 2), fireMat('#ff2a00', '#ff9030', { disp: 0.5 }));
+    halo.material.uniforms.uAlpha.value = 0.55;
+    inner.add(new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), new THREE.MeshBasicMaterial({ color: '#fff4d0' })));
+    inner.add(core, halo);
+  } else if (kind === 'shadowbolt') {
+    inner.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10), new THREE.MeshBasicMaterial({ color: '#000000' })));
+    inner.add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.45, 3), fireMat('#5010a0', '#c070ff')));
   } else {
     const col = color || { fireball: '#ff7020', fire: '#ff6020', magic: '#8080ff', shadowbolt: '#8030ff', shadow: '#8060ff', drain: '#ff2050', curse: '#80ff40' }[kind] || '#ffffff';
     const size = kind === 'fireball' ? 0.32 : 0.22;
@@ -519,6 +834,7 @@ function disposeObj(o) {
   o.traverse(c => {
     if (c.isMesh) {
       if (c.geometry && !c.geometry.userData.keep) c.geometry.dispose();
+      if (c.material && c.material.isShaderMaterial && c.material.uniforms && c.material.uniforms.uTime === fxTime) c.material.dispose();
     }
   });
 }

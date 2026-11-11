@@ -12,9 +12,52 @@ function furMat(color, rough = 0.9) {
   const k = color + rough;
   if (!mats.has(k)) {
     const f = furTex();
-    mats.set(k, new THREE.MeshStandardMaterial({ color, map: f.map, normalMap: f.normalMap, normalScale: new THREE.Vector2(1.2, 1.2), roughness: rough }));
+    const m = new THREE.MeshStandardMaterial({ color, map: f.map, normalMap: f.normalMap, normalScale: new THREE.Vector2(1.2, 1.2), roughness: rough });
+    m.userData.fur = color;
+    mats.set(k, m);
   }
   return mats.get(k);
+}
+
+// ---------- Объёмный мех (слои-оболочки) ----------
+export const furLOD = { cam: new THREE.Vector3(), dist: 42 };
+let strandTex = null;
+function strands() {
+  if (strandTex) return strandTex;
+  const w = 256, c = document.createElement('canvas'); c.width = c.height = w;
+  const ctx = c.getContext('2d'); const img = ctx.createImageData(w, w);
+  for (let i = 0; i < w * w; i++) { const v = Math.random() * 255; img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v; img.data[i * 4 + 3] = 255; }
+  ctx.putImageData(img, 0, 0);
+  strandTex = new THREE.CanvasTexture(c);
+  strandTex.wrapS = strandTex.wrapT = THREE.RepeatWrapping;
+  strandTex.magFilter = THREE.NearestFilter;
+  strandTex.minFilter = THREE.NearestMipmapLinearFilter;
+  return strandTex;
+}
+function shellMat(color, k, len, rep) {
+  const key = ['shell', color, k.toFixed(2), len, rep].join('|');
+  if (mats.has(key)) return mats.get(key);
+  const f = furTex();
+  const m = new THREE.MeshStandardMaterial({ color, map: f.map, roughness: 0.95 });
+  m.onBeforeCompile = (sh) => {
+    const [rx, ry] = String(rep).split(',').map(Number);
+    sh.uniforms.uK = { value: k }; sh.uniforms.uLen = { value: len }; sh.uniforms.tStr = { value: strands() }; sh.uniforms.uRep = { value: new THREE.Vector2(rx, ry) };
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uK; uniform float uLen; varying vec2 vFurUv;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        transformed += objectNormal * uK * uLen;
+        transformed.y -= uK * uK * uLen * 0.55;
+        vFurUv = uv;`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uK; uniform sampler2D tStr; uniform vec2 uRep; varying vec2 vFurUv;')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        float st = texture2D(tStr, vFurUv * uRep).r;
+        if (st < uK * 0.85 + 0.08) discard;
+        diffuseColor.rgb *= mix(0.55, 1.12, uK);`);
+  };
+  m.customProgramCacheKey = () => 'shell' + k.toFixed(2) + len + rep;
+  mats.set(key, m);
+  return m;
 }
 const eyeMat = (c) => { const k = 'eye' + c; if (!mats.has(k)) mats.set(k, new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.1, clearcoat: 1 })); return mats.get(k); };
 const hoofMat = () => basicMat('#1a1410', 0.45, 0.1);
@@ -26,19 +69,19 @@ const SPECIES = {
     leg: [0.3, 0.3, 0.16], legR: 0.05, rearLeg: [0.3, 0.3, 0.2], spread: 0.13, len: 0.5,
     chest: [0.2, 0.25, 0.28], barrel: [0.17, 0.2, 0.32], rump: [0.17, 0.19, 0.2], hump: null,
     neck: { n: 2, len: 0.17, r: 0.12, pitch: -0.55 }, skull: [0.12, 0.12, 0.14], muzzle: [0.06, 0.06, 0.15], ear: [0.04, 0.11, 'point'],
-    tail: { n: 5, len: 0.12, r: 0.065, droop: 0.45, bushy: true }, ruff: true, paw: 'paw',
+    tail: { n: 5, len: 0.12, r: 0.065, droop: 0.45, bushy: true }, ruff: true, paw: 'paw', furLen: 0.035, shells: 5,
   },
   bear: {
-    leg: [0.36, 0.34, 0.1], legR: 0.12, rearLeg: [0.4, 0.34, 0.12], spread: 0.27, len: 0.72,
-    chest: [0.4, 0.46, 0.46], barrel: [0.42, 0.44, 0.55], rump: [0.38, 0.4, 0.38], hump: [0.3, 0.22, 0.3],
-    neck: { n: 2, len: 0.18, r: 0.25, pitch: -0.15 }, skull: [0.22, 0.2, 0.22], muzzle: [0.11, 0.1, 0.15], ear: [0.06, 0.06, 'round'],
-    tail: { n: 1, len: 0.08, r: 0.07, droop: 0.3 }, ruff: false, paw: 'claw',
+    leg: [0.38, 0.34, 0.1], legR: 0.13, rearLeg: [0.42, 0.34, 0.12], spread: 0.28, len: 0.74,
+    chest: [0.42, 0.5, 0.5], barrel: [0.45, 0.47, 0.6], rump: [0.4, 0.43, 0.4], hump: [0.34, 0.26, 0.34],
+    neck: { n: 2, len: 0.2, r: 0.3, pitch: -0.1 }, skull: [0.23, 0.21, 0.22], muzzle: [0.1, 0.095, 0.16], ear: [0.065, 0.065, 'round'],
+    tail: { n: 1, len: 0.08, r: 0.07, droop: 0.3 }, ruff: false, paw: 'claw', furLen: 0.07, shells: 6, bear: true,
   },
   boar: {
     leg: [0.22, 0.2, 0.08], legR: 0.055, rearLeg: [0.24, 0.2, 0.1], spread: 0.15, len: 0.5,
     chest: [0.26, 0.32, 0.33], barrel: [0.25, 0.28, 0.36], rump: [0.21, 0.24, 0.22], hump: null,
     neck: { n: 1, len: 0.12, r: 0.22, pitch: 0.15 }, skull: [0.17, 0.17, 0.2], muzzle: [0.09, 0.08, 0.2], ear: [0.05, 0.08, 'point'],
-    tail: { n: 3, len: 0.07, r: 0.02, droop: 1.0 }, ruff: false, paw: 'hoof', bristle: true, tusks: true,
+    tail: { n: 3, len: 0.07, r: 0.02, droop: 1.0 }, ruff: false, paw: 'hoof', bristle: true, tusks: true, furLen: 0.03, shells: 4,
   },
   horse: {
     leg: [0.42, 0.4, 0.26], legR: 0.07, rearLeg: [0.46, 0.42, 0.3], spread: 0.17, len: 0.75,
@@ -69,6 +112,10 @@ export class Beast extends Creature {
     this.m(ellipsoid(S.barrel[0] * 0.85, S.barrel[1] * 0.55, S.barrel[2] * 0.85, 18, 12), belly, torso, 0, -S.barrel[1] * 0.45, L * 0.05);
     this.m(ellipsoid(S.rump[0], S.rump[1], S.rump[2], 22, 16), fur, torso, 0, S.rump[1] * 0.08, -L * 0.6);
     if (S.hump) this.m(ellipsoid(S.hump[0], S.hump[1], S.hump[2], 18, 12), fur, torso, 0, S.chest[1] * 0.8, L * 0.55);
+    if (S.bear) {
+      this.m(ellipsoid(S.barrel[0] * 0.92, S.barrel[1] * 0.6, S.barrel[2] * 0.8, 18, 12), fur, torso, 0, -S.barrel[1] * 0.55, L * 0.1); // провисшее брюхо
+      this.m(ellipsoid(S.chest[0] * 0.7, S.chest[1] * 0.55, S.chest[2] * 0.5, 16, 12), fur, torso, 0, -S.chest[1] * 0.45, L * 0.8); // грудь
+    }
     // лопатки и бёдра — мускулы
     for (const sx of [-1, 1]) {
       this.m(ellipsoid(S.chest[0] * 0.45, S.chest[1] * 0.7, S.chest[2] * 0.55), fur, torso, sx * S.chest[0] * 0.62, S.chest[1] * 0.05, L * 0.62);
@@ -96,6 +143,12 @@ export class Beast extends Creature {
     this.head = head;
     const sk = S.skull, mz = S.muzzle;
     this.m(ellipsoid(sk[0], sk[1], sk[2], 20, 14), fur, head, 0, 0, sk[2] * 0.4);
+    if (S.bear) {
+      // широкий лоб, щёки, «блюдцевидная» морда медведя
+      this.m(ellipsoid(sk[0] * 0.75, sk[1] * 0.5, sk[2] * 0.6), fur, head, 0, sk[1] * 0.5, sk[2] * 0.55);
+      for (const sx of [-1, 1]) this.m(ellipsoid(sk[0] * 0.45, sk[1] * 0.55, sk[2] * 0.55), fur, head, sx * sk[0] * 0.72, -sk[1] * 0.25, sk[2] * 0.25);
+    }
+    if (kind === 'wolf') for (const sx of [-1, 1]) this.m(ellipsoid(sk[0] * 0.4, sk[1] * 0.5, sk[2] * 0.5), fur2, head, sx * sk[0] * 0.75, -sk[1] * 0.35, sk[2] * 0.1);
     // морда — сужающийся цилиндр
     const muzzleG = new THREE.CylinderGeometry(mz[0] * 0.75, mz[0], mz[2] * 2, 14, 3);
     muzzleG.rotateX(Math.PI / 2); muzzleG.scale(1, mz[1] / mz[0], 1);
@@ -190,6 +243,27 @@ export class Beast extends Creature {
     this.height = bodyH + S.chest[1] + S.neck.len * S.neck.n * 0.6;
     // ездовая сбруя
     if (opts.saddle) this.addTack(opts.saddle, def);
+    if (S.furLen && !opts.saddle && !def.noFur) this.addFur(S.furLen, S.shells || 5);
+  }
+
+  // Слои меха поверх всех меховых частей тела
+  addFur(len, n) {
+    this.shells = [];
+    const base = this.meshes.filter(m => m.material && m.material.userData && m.material.userData.fur && (m.geometry.boundingSphere || (m.geometry.computeBoundingSphere(), m.geometry.boundingSphere)).radius * Math.max(m.scale.x, m.scale.y, m.scale.z) > 0.09);
+    for (const m of base) {
+      const r = m.geometry.boundingSphere || (m.geometry.computeBoundingSphere(), m.geometry.boundingSphere);
+      const rep = new THREE.Vector2(Math.max(8, r.radius * 90), Math.max(6, r.radius * 60));
+      for (let i = 1; i <= n; i++) {
+        const sm = new THREE.Mesh(m.geometry, shellMat(m.material.userData.fur, i / n, len, rep.x.toFixed(0) + ',' + rep.y.toFixed(0)));
+        sm.material.onBeforeCompile && null;
+        sm.position.copy(m.position); sm.rotation.copy(m.rotation); sm.scale.copy(m.scale);
+        sm.castShadow = false; sm.receiveShadow = true;
+        m.parent.add(sm);
+        this.shells.push(sm);
+        sm.userData.rep = rep;
+      }
+    }
+    this.furOn = true;
   }
 
   addTack(style, def) {
@@ -230,6 +304,10 @@ export class Beast extends Creature {
 
   update(dt, st = {}) {
     this.baseUpdate(dt);
+    if (this.shells) {
+      const on = this.root.position.distanceTo(furLOD.cam) < furLOD.dist && this.deadT < 2;
+      if (on !== this.furOn) { this.furOn = on; for (const sm of this.shells) sm.visible = on; }
+    }
     const speed = st.speed || 0;
     const runRef = this.kind === 'horse' ? 8 : 6;
     const blend = clamp(Math.abs(speed) / runRef, 0, 1.6);

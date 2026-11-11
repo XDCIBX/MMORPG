@@ -443,6 +443,7 @@ export class Ally extends Entity {
     this.pos.copy(pos);
     this.pos.y = game.world.standY(pos.x, pos.z);
     const def = Object.assign({}, MOB_TYPES[D.type], D.override || {});
+    if (kind === 'spiritwolf') def.noFur = true;
     if (kind === 'deathknight') def.armor = { kind: 'heavy', c1: '#1a1a20', c2: '#1a5a3a', trim: '#40ff90', tier: 7, style: 1, gem: '#40ff90' };
     if (kind === 'deathknight') def.spec = Object.assign({}, def.spec, { eyes: { color: '#40ff90' } });
     if (kind === 'skeleton') def.spec = Object.assign({}, def.spec, { eyes: { color: '#40ff90' } });

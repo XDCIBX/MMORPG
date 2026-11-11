@@ -67,7 +67,7 @@ export class World {
     this.fogMul = q >= 1 ? 1 : q >= 0.6 ? 0.85 : 0.7;
     if (this.veg) {
       this.veg.grassDist = q >= 1 ? 110 : q >= 0.6 ? 75 : 50;
-      this.veg.treeDist = q >= 1 ? 480 : q >= 0.6 ? 400 : 320;
+      this.veg.treeDist = q >= 1 ? 680 : q >= 0.6 ? 460 : 330;
     }
     if (this.sun) {
       const sm = q >= 1 ? 2048 : 1024;
@@ -116,7 +116,7 @@ export class World {
     Object.assign(this.envSky.material.uniforms, {});
     this.envScene.add(this.envSky);
     this.lastEnv = -999;
-    this.scene.fog = new THREE.Fog('#b8c8d8', 140, 560);
+    this.scene.fog = new THREE.Fog('#b8c8d8', 190, 760);
     // звёзды
     const starG = new THREE.BufferGeometry();
     const sp = [];
@@ -168,12 +168,12 @@ export class World {
     const dayFog = new THREE.Color('#b9cbe0').lerp(new THREE.Color('#e8a878'), dusk * 0.7);
     const nightFog = new THREE.Color('#121a2e');
     const fog = nightFog.clone().lerp(dayFog, day);
-    let tint = null, fogNear = 140, fogFar = 560;
-    if (B.id === BIOMES.volcanic.id) { tint = new THREE.Color('#7a3a20'); fogNear = 60; fogFar = 340; }
-    else if (B.id === BIOMES.snow.id) { tint = new THREE.Color('#dce8f4'); fogNear = 80; fogFar = 380; }
-    else if (B.id === BIOMES.swamp.id) { tint = new THREE.Color('#6a7a5a'); fogNear = 50; fogFar = 300; }
-    else if (B.id === BIOMES.cursed.id) { tint = new THREE.Color('#4a3a5a'); fogNear = 60; fogFar = 320; }
-    if (tint) fog.lerp(tint.multiplyScalar(lerp(0.25, 1, day)), 0.55);
+    let tint = null, fogNear = 190, fogFar = 760;
+    if (B.id === BIOMES.volcanic.id) { tint = new THREE.Color('#7a3a20'); fogNear = 100; fogFar = 480; }
+    else if (B.id === BIOMES.snow.id) { tint = new THREE.Color('#dce8f4'); fogNear = 140; fogFar = 620; }
+    else if (B.id === BIOMES.swamp.id) { tint = new THREE.Color('#6a7a5a'); fogNear = 90; fogFar = 460; }
+    else if (B.id === BIOMES.cursed.id) { tint = new THREE.Color('#4a3a5a'); fogNear = 100; fogFar = 480; }
+    if (tint) fog.lerp(tint.multiplyScalar(lerp(0.25, 1, day)), 0.45);
     this.fogTarget = this.fogTarget || fog.clone();
     this.fogTarget.lerp(fog, Math.min(1, dt * 0.8));
     this.scene.fog.color.copy(this.fogTarget);

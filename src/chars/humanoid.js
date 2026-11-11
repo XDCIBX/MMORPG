@@ -1,6 +1,6 @@
 // Процедурная гуманоидная модель со скелетом из суставов и процедурной анимацией.
 import * as THREE from 'three';
-import { skinMat, clothMat, leatherMat, gemMat, boneMat, basicMat } from './materials.js';
+import { skinMat, clothMat, leatherMat, gemMat, boneMat, basicMat, muscleSkinMat } from './materials.js';
 import { clamp, lerp, smoothstep } from '../core/util.js';
 import { sculptedHead, faceTexture, buildHair, hairMat, hairCapMat } from './face.js';
 
@@ -82,25 +82,36 @@ function irisMatFor(color) {
 // ---------- Позы для анимаций (ключевые кадры) ----------
 const R = (x = 0, y = 0, z = 0) => [x, y, z];
 export const ACTIONS = {
-  slash: { dur: 0.55, keys: [
-    [0.3, { shoulderR: R(-2.5, 0, -0.5), elbowR: R(-1.4), spine: R(0, 0.45), wristR: R(0.3) }],
-    [0.55, { shoulderR: R(-0.5, 0, 0.35), elbowR: R(-0.15), spine: R(0.15, -0.5), wristR: R(-0.2) }],
+  // рубящий удар справа налево: замах с разворотом корпуса, выпад, проводка
+  slash: { dur: 0.62, lunge: 0.35, keys: [
+    [0.24, { shoulderR: R(-2.3, 0.4, -1.1), elbowR: R(-1.6), wristR: R(0.4), spine: R(0.05, 0.75, 0.05), chest: R(0, 0.2), shoulderL: R(-0.6, 0, 0.6), elbowL: R(-1.0), hipL: R(-0.35), kneeL: R(0.35), hipR: R(0.2), kneeR: R(0.15) }],
+    [0.42, { shoulderR: R(-0.9, -0.3, 0.55), elbowR: R(-0.15), wristR: R(-0.5), spine: R(0.25, -0.65, -0.05), chest: R(0, -0.2), shoulderL: R(-0.3, 0, 0.9), elbowL: R(-0.5), hipL: R(-0.6), kneeL: R(0.55), hipR: R(0.35), kneeR: R(0.2) }],
+    [0.64, { shoulderR: R(-0.4, -0.2, 0.65), elbowR: R(-0.3), wristR: R(-0.3), spine: R(0.2, -0.8), chest: R(0, -0.15), shoulderL: R(-0.2, 0, 0.7), hipL: R(-0.5), kneeL: R(0.45), hipR: R(0.3), kneeR: R(0.15) }],
   ] },
-  slam: { dur: 0.75, keys: [
-    [0.4, { shoulderR: R(-3.0, 0, -0.15), shoulderL: R(-3.0, 0, 0.15), elbowR: R(-1.1), elbowL: R(-1.1), spine: R(-0.25) }],
-    [0.62, { shoulderR: R(-0.9, 0, -0.05), shoulderL: R(-0.9, 0, 0.05), elbowR: R(-0.2), elbowL: R(-0.2), spine: R(0.5), hipL: R(-0.4), kneeL: R(0.5) }],
+  // обратный удар снизу вверх слева направо
+  slash2: { dur: 0.58, lunge: 0.25, keys: [
+    [0.25, { shoulderR: R(-1.2, -0.4, 1.05), elbowR: R(-1.9), wristR: R(0.2), spine: R(0.1, -0.7), chest: R(0, -0.2), shoulderL: R(-0.4, 0, 0.4), hipR: R(-0.35), kneeR: R(0.35) }],
+    [0.45, { shoulderR: R(-1.9, 0.3, -1.25), elbowR: R(-0.2), wristR: R(0.5), spine: R(0.05, 0.75), chest: R(0, 0.2), shoulderL: R(-0.3, 0, 1.0), hipR: R(-0.55), kneeR: R(0.5), hipL: R(0.3) }],
+    [0.66, { shoulderR: R(-2.1, 0.2, -1.1), elbowR: R(-0.4), spine: R(0, 0.8), shoulderL: R(-0.2, 0, 0.8) }],
   ] },
-  sweep: { dur: 0.6, keys: [
-    [0.3, { spine: R(0, 1.0), shoulderR: R(-1.3, 0, -0.9), shoulderL: R(-1.4, 0.5, 0.3), elbowR: R(-0.5), elbowL: R(-0.6) }],
-    [0.62, { spine: R(0.1, -1.1), shoulderR: R(-1.3, 0, 0.3), shoulderL: R(-1.3, 0, 0.9), elbowR: R(-0.3), elbowL: R(-0.3) }],
+  // мощный удар сверху с прыжком-выпадом
+  slam: { dur: 0.8, lunge: 0.55, hop: 0.25, keys: [
+    [0.34, { shoulderR: R(-3.05, 0, -0.2), shoulderL: R(-3.05, 0, 0.2), elbowR: R(-1.3), elbowL: R(-1.3), wristR: R(0.5), spine: R(-0.35), neck: R(-0.2), hipL: R(-0.25), kneeL: R(0.6), hipR: R(0.1), kneeR: R(0.5) }],
+    [0.52, { shoulderR: R(-0.75, 0, -0.05), shoulderL: R(-0.8, 0, 0.05), elbowR: R(-0.1), elbowL: R(-0.1), wristR: R(-0.3), spine: R(0.65), neck: R(0.2), hipL: R(-0.8), kneeL: R(1.0), hipR: R(0.45), kneeR: R(0.55) }],
+    [0.72, { shoulderR: R(-0.7), shoulderL: R(-0.75), elbowR: R(-0.2), elbowL: R(-0.2), spine: R(0.55), hipL: R(-0.7), kneeL: R(0.9), hipR: R(0.4), kneeR: R(0.5) }],
   ] },
-  thrust: { dur: 0.45, keys: [
-    [0.3, { shoulderR: R(-0.5, 0, -0.2), elbowR: R(-1.9) }],
-    [0.55, { shoulderR: R(-1.55), elbowR: R(-0.05), spine: R(0.2, -0.3) }],
+  sweep: { dur: 0.7, spin: 1, keys: [
+    [0.2, { spine: R(0.1, 0.9), shoulderR: R(-1.2, 0, -1.2), shoulderL: R(-1.3, 0.4, 0.6), elbowR: R(-0.6), elbowL: R(-0.7), hipL: R(-0.3), kneeL: R(0.5), hipR: R(-0.3), kneeR: R(0.5) }],
+    [0.5, { spine: R(0.15, -0.2), shoulderR: R(-1.5, 0, -1.4), shoulderL: R(-1.4, 0, 1.1), elbowR: R(-0.1), elbowL: R(-0.3), hipL: R(-0.45), kneeL: R(0.7), hipR: R(-0.45), kneeR: R(0.7) }],
+    [0.78, { spine: R(0.1, -0.8), shoulderR: R(-1.2, 0, 0.3), shoulderL: R(-1.2, 0, 0.9), elbowR: R(-0.3), elbowL: R(-0.3) }],
   ] },
-  bash: { dur: 0.5, keys: [
-    [0.3, { shoulderL: R(-0.5, 0, 0.4), elbowL: R(-1.9), spine: R(0, -0.4) }],
-    [0.55, { shoulderL: R(-1.5, 0, 0.1), elbowL: R(-0.6), spine: R(0.25, 0.4) }],
+  thrust: { dur: 0.5, lunge: 0.6, keys: [
+    [0.3, { shoulderR: R(-0.6, 0.3, -0.4), elbowR: R(-2.0), spine: R(0, 0.45), chest: R(0, 0.15), hipR: R(0.2) }],
+    [0.52, { shoulderR: R(-1.6), elbowR: R(-0.02), spine: R(0.25, -0.35), chest: R(0, -0.1), hipL: R(-0.7), kneeL: R(0.7), hipR: R(0.4), kneeR: R(0.2) }],
+  ] },
+  bash: { dur: 0.55, lunge: 0.45, keys: [
+    [0.3, { shoulderL: R(-0.5, 0, 0.4), elbowL: R(-1.9), spine: R(0, -0.45), hipR: R(-0.3), kneeR: R(0.4) }],
+    [0.52, { shoulderL: R(-1.55, 0, 0.1), elbowL: R(-0.6), spine: R(0.3, 0.45), hipL: R(-0.65), kneeL: R(0.6), hipR: R(0.35) }],
   ] },
   bow: { dur: 0.7, keys: [
     [0.2, { shoulderL: R(-1.55, 0, 0.05), elbowL: R(-0.05), shoulderR: R(-1.5, 0, -0.1), elbowR: R(-1.4), spine: R(0, 0.25), neck: R(0, -0.2) }],
@@ -214,14 +225,15 @@ export class Humanoid {
     const spine = this.joint('spine', hips, 0, 0.07, 0);
     // Живот
     const ab = latheGeo([[0.0, -0.02], [0.125, 0.0], [0.13, 0.08], [0.128, 0.16], [0.135, 0.22]], 16, 'abdomen');
-    this.parts.abdomen = this.mesh(ab, this.shirtMat, spine, 0, 0, 0);
+    const bare = this.shirtMat === skin && !isSkel;
+    this.parts.abdomen = this.mesh(ab, bare ? muscleSkinMat(s.skin, 'abs') : this.shirtMat, spine, 0, 0, 0);
     this.parts.abdomen.scale.set(W * (F ? 0.95 : 1.02), 1, 0.74 * D);
     const chest = this.joint('chest', spine, 0, 0.18, 0);
     // Грудная клетка (V-образный силуэт у мужчин)
     const chestProf = F
       ? [[0.12, 0.0], [0.135, 0.06], [0.15, 0.14], [0.152, 0.2], [0.14, 0.25], [0.1, 0.29], [0.05, 0.31]]
       : [[0.13, 0.0], [0.15, 0.06], [0.17, 0.14], [0.18, 0.21], [0.172, 0.26], [0.12, 0.3], [0.05, 0.315]];
-    this.parts.chest = this.mesh(latheGeo(chestProf, 18, 'chest' + F), this.shirtMat, chest, 0, 0, 0);
+    this.parts.chest = this.mesh(latheGeo(chestProf, 24, 'chest' + F), bare ? muscleSkinMat(s.skin, 'chest') : this.shirtMat, chest, 0, 0, 0);
     this.parts.chest.scale.set(W, 1, 0.68 * D);
     if (F) {
       for (const sx of [-1, 1]) {
@@ -545,6 +557,16 @@ export class Humanoid {
           T[jn] = [lerp(a[0] || 0, b[0] || 0, k), lerp(a[1] || 0, b[1] || 0, k), lerp(a[2] || 0, b[2] || 0, k)];
         }
       }
+    }
+    // выпад вперёд, прыжок и вращение всем телом во время удара
+    if (this.action && this.deadT < 0) {
+      const p = this.actionT, A = this.action;
+      const w = Math.sin(clamp((p - 0.1) / 0.6, 0, 1) * Math.PI);
+      this.body.position.z = (A.lunge || 0) * w;
+      this.body.position.y = (A.hop || 0) * Math.sin(clamp((p - 0.15) / 0.38, 0, 1) * Math.PI);
+      this.body.rotation.y = A.spin ? -smoothstep(0.12, 0.75, p) * Math.PI * 2 * A.spin : 0;
+    } else if (this.deadT < 0) {
+      this.body.position.z *= 0.8; this.body.position.y *= 0.8; this.body.rotation.y = 0;
     }
     // Смерть
     if (this.deadT >= 0) {

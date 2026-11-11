@@ -158,20 +158,16 @@ const TREE_BUILDERS = {
   pine(rnd, snow = false) {
     const H = 9 + rnd() * 5, seed = rnd() * 50;
     const wood = [paint(limb(H, 0.4, 0.04, 8, 0.5, seed), (c) => BARK(c, 0.85))];
-    // тёмная «сердцевина» кроны, чтобы ель не просвечивала
-    const core = new THREE.ConeGeometry(1.6, H * 0.78, 8, 1, true);
-    core.translate(0, H * 0.58, 0);
-    wood.push(paint(core, (c) => c.setRGB(0.12, 0.2, 0.12)));
     const leaves = [];
-    const tiers = 10 + Math.floor(rnd() * 3);
+    const tiers = 13 + Math.floor(rnd() * 3);
     for (let t = 0; t < tiers; t++) {
       const k = t / tiers;
       const y = H * (0.2 + k * 0.78);
-      const L = (1 - k) * 3.4 + 0.7;
-      const nbr = 7;
+      const L = (1 - k) * 3.4 + 0.8;
+      const nbr = 9;
       for (let b = 0; b < nbr; b++) {
         const a = b / nbr * Math.PI * 2 + t * 0.5 + rnd() * 0.3;
-        const g = new THREE.PlaneGeometry(L, L * 0.5);
+        const g = new THREE.PlaneGeometry(L, L * 0.62);
         g.rotateX(-Math.PI / 2);
         g.translate(L / 2, 0, 0);
         g.rotateZ(-(0.25 + (1 - k) * 0.25 + rnd() * 0.1));
@@ -198,9 +194,9 @@ const TREE_BUILDERS = {
       const end = from.clone().addScaledVector(dir.normalize(), 2.4);
       leaves.push(...leafCards(rnd, end.x, end.y, end.z, 1.4, 8, 1.8, center, tint, { span: 4 }));
       // свисающие ветви
-      for (let k = 0; k < 4; k++) {
-        const len = 2.4 + rnd() * 1.4;
-        const g = new THREE.PlaneGeometry(0.9, len);
+      for (let k = 0; k < 6; k++) {
+        const len = 2.6 + rnd() * 1.6;
+        const g = new THREE.PlaneGeometry(1.1, len, 1, 3);
         g.translate(0, -len / 2, 0);
         g.rotateY(rnd() * Math.PI);
         g.translate(end.x + (rnd() - 0.5) * 1.6, end.y + 0.3, end.z + (rnd() - 0.5) * 1.6);
@@ -296,7 +292,7 @@ export class Vegetation {
       oak: windMaterial(0.04, 2.5, { mat: { map: bark.map, normalMap: bark.normalMap, roughness: 0.95 } }),
       birch: windMaterial(0.04, 2.5, { mat: { map: birch.map, normalMap: birch.normalMap, roughness: 0.85 } }),
     };
-    const leafOpts = (map) => ({ flutter: 0.035, mat: { map, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.75 } });
+    const leafOpts = (map) => ({ flutter: 0.035, mat: { map, alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.7 } });
     this.leafMats = {
       broad: windMaterial(0.04, 2.5, leafOpts(leafCard('broad'))),
       small: windMaterial(0.04, 2.5, leafOpts(leafCard('small'))),
