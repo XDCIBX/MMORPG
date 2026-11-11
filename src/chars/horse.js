@@ -7,7 +7,7 @@ import { Creature } from './creature_base.js';
 import { Sculpt, drapeGeo, ribbonGeo, mergeGeos } from './sdf.js';
 import { hairStrandTex } from './face.js';
 import { metalMat, leatherMat, clothMat, gemMat } from './materials.js';
-import { furTex } from '../core/textures.js';
+import { furTex, heightToNormal } from '../core/textures.js';
 import { IS_PHONE, IS_TOUCH } from '../core/device.js';
 import { clamp, lerp, mulberry32 } from '../core/util.js';
 
@@ -358,6 +358,60 @@ function maneMat(color, glow) {
   }
   return matCache.get(k);
 }
+// Текстура волос хвоста: плотные тонкие волоски вдоль длины, кончики разной длины
+const tailTexCache = {};
+function tailTex(kind) {
+  if (tailTexCache[kind]) return tailTexCache[kind];
+  const Wd = 256, Hd = 1024;
+  const c = document.createElement('canvas'); c.width = Wd; c.height = Hd;
+  const ctx = c.getContext('2d');
+  const hc = document.createElement('canvas'); hc.width = Wd; hc.height = Hd;
+  const hctx = hc.getContext('2d', { willReadFrequently: true });
+  hctx.fillStyle = '#000'; hctx.fillRect(0, 0, Wd, Hd);
+  const rnd = mulberry32(kind === 'core' ? 91 : 133);
+  const core = kind === 'core';
+  if (core) {
+    // сплошная основа сверху, плавно уходящая в отдельные пряди к концу
+    const g = ctx.createLinearGradient(0, 0, 0, Hd);
+    g.addColorStop(0, 'rgba(150,150,150,1)'); g.addColorStop(0.72, 'rgba(150,150,150,1)'); g.addColorStop(0.8, 'rgba(150,150,150,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, Wd, Hd);
+  }
+  const N = core ? 2600 : 1500;
+  for (let i = 0; i < N; i++) {
+    const x = rnd() * Wd;
+    const start = core ? 0 : rnd() * Hd * 0.35;
+    const len = core ? Hd * (0.78 + rnd() * 0.22) : Hd * (0.45 + rnd() * 0.55);
+    const l = 0.5 + rnd() * 0.55;
+    const v = (l * 235) | 0;
+    ctx.strokeStyle = `rgba(${v},${v},${v},${0.75 + rnd() * 0.25})`;
+    ctx.lineWidth = 0.6 + rnd() * 1.3;
+    const sway = (rnd() - 0.5) * 10;
+    for (const ox of [0, Wd, -Wd]) {
+      ctx.beginPath(); ctx.moveTo(x + ox, start);
+      ctx.bezierCurveTo(x + ox + sway * 0.3, start + len * 0.35, x + ox + sway, start + len * 0.7, x + ox + sway * 1.4, Math.min(Hd - 2, start + len));
+      ctx.stroke();
+      hctx.strokeStyle = `rgba(255,255,255,${0.35 + rnd() * 0.4})`; hctx.lineWidth = 1;
+      hctx.beginPath(); hctx.moveTo(x + ox, start); hctx.bezierCurveTo(x + ox + sway * 0.3, start + len * 0.35, x + ox + sway, start + len * 0.7, x + ox + sway * 1.4, Math.min(Hd - 2, start + len)); hctx.stroke();
+    }
+  }
+  const map = new THREE.CanvasTexture(c);
+  map.colorSpace = THREE.SRGBColorSpace; map.wrapS = THREE.RepeatWrapping; map.anisotropy = 8;
+  const nrm = new THREE.CanvasTexture(heightToNormal(hc, 1.6));
+  nrm.wrapS = THREE.RepeatWrapping;
+  tailTexCache[kind] = { map, nrm };
+  return tailTexCache[kind];
+}
+function tailMat(color, glow, kind) {
+  const k = 'tail' + color + glow + kind;
+  if (!matCache.has(k)) {
+    const t = tailTex(kind);
+    const m = new THREE.MeshStandardMaterial({ color, map: t.map, normalMap: t.nrm, normalScale: new THREE.Vector2(0.8, 0.8), alphaTest: kind === 'core' ? 0.45 : 0.4, side: THREE.DoubleSide, roughness: 0.42, metalness: 0.05 });
+    if (glow) { m.emissive = new THREE.Color(glow); m.emissiveIntensity = 0.35; m.emissiveMap = t.map; }
+    matCache.set(k, m);
+  }
+  return matCache.get(k);
+}
+
 function eyeMat(glow) {
   const k = 'eye' + glow;
   if (!matCache.has(k)) {
@@ -445,34 +499,65 @@ function buildHair(shape, opts) {
   const tb = ['tail0', 'tail1', 'tail2', 'tail3'].map(n => S.boneIdx.get(n));
   const tp = ['tail0', 'tail1', 'tail2', 'tail3'].map(n => S.bones[S.boneIdx.get(n)].pos);
   const tailCrv = new THREE.CatmullRomCurve3([W(0, 1.43, -0.86), W(0, 1.25, -0.96), W(0, 1.06, -1.0)]);
-  const NT = IS_PHONE ? 70 : 140;
-  const bottom = S.variant === 'pony' ? 0.34 : 0.46;
-  for (let i = 0; i < NT; i++) {
-    const t = Math.pow(rnd(), 1.6) * 0.85;
-    const a = tailCrv.getPoint(t);
-    const ang = (rnd() - 0.5) * Math.PI * 1.7;
-    const tg = tailCrv.getTangent(t);
-    const up = new THREE.Vector3().crossVectors(V(1, 0, 0), tg).normalize(); // «спинка» хвоста
-    const radial = up.clone().multiplyScalar(Math.cos(ang)).add(V(Math.sin(ang), 0, 0)).normalize();
-    const root = S.hit(a, radial, 0.002).p;
-    // прядь сначала лежит вдоль репицы, потом свободно спадает и чуть расходится
-    const pts = [root.clone()];
-    const p = root.clone();
-    const len = (root.y - bottom) * (0.95 + rnd() * 0.15) + 0.12;
-    const steps = 12, st = len / steps;
-    const spread = 0.04 + rnd() * 0.05;
-    const d = tg.clone().addScaledVector(radial, 0.15);
-    for (let k = 1; k <= steps; k++) {
-      d.y -= 0.16; d.addScaledVector(radial, spread * 0.25); d.z -= 0.02; d.normalize();
-      p.addScaledVector(d, st);
-      S.pushOut(p, 0.006 + k * 0.002);
-      pts.push(p.clone());
+  // Хвост — плотный объёмный пучок: непрозрачная основа + полупрозрачные внешние слои
+  const bottom = (S.variant === 'pony' ? 0.36 : 0.5);
+  const hang = [W(0, 1.43, -0.86), W(0, 1.27, -0.965), W(0, 1.08, -1.015)];
+  const dockEnd = hang[2];
+  hang.push(V(0, lerp(dockEnd.y, bottom, 0.35), dockEnd.z - 0.04), V(0, lerp(dockEnd.y, bottom, 0.7), dockEnd.z - 0.05), V(0, bottom, dockEnd.z - 0.035));
+  const tcurve = new THREE.CatmullRomCurve3(hang);
+  const tailLayers = [];
+  const NR = IS_PHONE ? 14 : 22, NL = IS_PHONE ? 20 : 32;
+  for (const [off, extra, rep, seed] of [[0, 0, 3, 0], [0.014, 0.05, 2.5, 1.7], [0.028, 0.09, 2, 3.1]]) {
+    const pos = [], uv = [], idx = [];
+    const total = 1 + extra;
+    const tEnd = tcurve.getTangentAt(1);
+    for (let i = 0; i <= NL; i++) {
+      const tt = i / NL * total;
+      let c, T;
+      if (tt <= 1) { c = tcurve.getPointAt(tt); T = tcurve.getTangentAt(tt); }
+      else { c = tcurve.getPointAt(1).addScaledVector(tEnd, (tt - 1) * 0.9); T = tEnd.clone(); }
+      const X = V(1, 0, 0);
+      const Bk = new THREE.Vector3().crossVectors(X, T).normalize(); // назад от тела
+      // профиль: обхватывает репицу, расширяется к середине, сужается к концу
+      const t = Math.min(tt, 1);
+      let w = t < 0.22 ? lerp(0.068, 0.09, t / 0.22) : t < 0.6 ? lerp(0.09, 0.118, (t - 0.22) / 0.38) : lerp(0.118, 0.07, Math.pow((t - 0.6) / 0.4, 1.3));
+      if (S.variant === 'pony') w *= 1.15;
+      const dpt = t < 0.22 ? 0.95 : lerp(0.95, 0.68, Math.min(1, (t - 0.22) / 0.3));
+      for (let j = 0; j <= NR; j++) {
+        const th = j / NR * Math.PI * 2;
+        const bump = 1 + 0.07 * Math.sin(th * 3 + tt * 6 + seed) + 0.05 * Math.sin(th * 7 - tt * 11 + seed * 2);
+        const r = (w + off) * bump;
+        const p = c.clone().addScaledVector(X, Math.cos(th) * r).addScaledVector(Bk, Math.sin(th) * r * dpt);
+        pos.push(p.x, p.y, p.z);
+        uv.push(j / NR * rep, 1 - tt / total);
+      }
     }
-    const n = pts.length;
-    tail.push(ribbonGeo(pts, 0.04 + rnd() * 0.025, (k) => {
-      const tt = pts[Math.min(n - 1, k + 1)].clone().sub(pts[Math.max(0, k - 1)]).normalize();
-      return new THREE.Vector3().crossVectors(tt, radial);
-    }, { taper: 0.5 }));
+    for (let i = 0; i < NL; i++) for (let j = 0; j < NR; j++) {
+      const a0 = i * (NR + 1) + j, b0 = a0 + 1, c0 = a0 + NR + 1, d0 = c0 + 1;
+      idx.push(a0, c0, b0, b0, c0, d0);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    tailLayers.push(g);
+  }
+  // несколько выбившихся прядей по краям
+  for (let i = 0; i < (IS_PHONE ? 8 : 18); i++) {
+    const t0 = 0.3 + rnd() * 0.5, th = rnd() * Math.PI * 2;
+    const c = tcurve.getPointAt(t0);
+    const dirOut = V(Math.cos(th), 0, -Math.abs(Math.sin(th)) * 0.7).normalize();
+    const pts = [];
+    for (let k = 0; k <= 8; k++) {
+      const f = k / 8;
+      const q = tcurve.getPointAt(Math.min(1, t0 + f * (1 - t0) * 1.05));
+      pts.push(q.addScaledVector(dirOut, 0.1 + f * 0.05 + Math.sin(f * 3 + i) * 0.015));
+    }
+    tailLayers.push(ribbonGeo(pts, 0.03, (k) => {
+      const tt = pts[Math.min(8, k + 1)].clone().sub(pts[Math.max(0, k - 1)]).normalize();
+      return new THREE.Vector3().crossVectors(tt, dirOut);
+    }, { taper: 0.6 }));
   }
   const tailW = (x, y, z) => {
     // вдоль цепочки костей хвоста по высоте
@@ -484,7 +569,8 @@ function buildHair(shape, opts) {
     if (y < tp[3].y) { idx[0] = tb[3]; wt[0] = 1; idx[1] = tb[2]; wt[1] = 0; }
     return { idx, wt };
   };
-  const tailGeo = skinStrands(S, tail, tailW);
+  const tailGeo = skinStrands(S, [tailLayers[0]], tailW);
+  const tailOuterGeo = skinStrands(S, tailLayers.slice(1), tailW);
   // «щётки» над копытами у тяжеловоза
   let featherGeo = null;
   if (opts.feather) {
@@ -505,7 +591,7 @@ function buildHair(shape, opts) {
     }
     featherGeo = skinStrands(S, fe.map(f => f.g), (x, y, z) => S.weightsAt(x, y, z, 0.02, new Set(['FPL', 'FPR', 'RPL', 'RPR', 'FCL', 'FCR', 'RCL', 'RCR'].map(n => S.boneIdx.get(n)))));
   }
-  const res = { maneGeo, tailGeo, featherGeo };
+  const res = { maneGeo, tailGeo, tailOuterGeo, featherGeo };
   hairCache.set(key, res);
   return res;
 }
@@ -735,8 +821,8 @@ export class Horse extends Creature {
     // волосы
     const hair = buildHair(shape, { maneLen: opts.maneLen || 0.38, feather: !!opts.feather });
     const mm = maneMat(coat.mane, opts.maneGlow || null);
-    for (const g of [hair.maneGeo, hair.tailGeo]) {
-      const m = new THREE.SkinnedMesh(g, mm);
+    for (const [g, mat] of [[hair.maneGeo, mm], [hair.tailGeo, tailMat(coat.mane, opts.maneGlow || null, 'core')], [hair.tailOuterGeo, tailMat(coat.mane, opts.maneGlow || null, 'shell')]]) {
+      const m = new THREE.SkinnedMesh(g, mat);
       m.castShadow = true; m.frustumCulled = false;
       this.body.add(m); m.bind(skeleton);
     }

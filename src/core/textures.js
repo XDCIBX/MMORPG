@@ -22,7 +22,7 @@ function toTex(c, { srgb = true, repeat = true } = {}) {
 }
 
 // Карта нормалей из карты высот (канал R)
-function heightToNormal(src, strength = 2) {
+export function heightToNormal(src, strength = 2) {
   const w = src.width, h = src.height;
   const sctx = src.getContext('2d');
   const sd = sctx.getImageData(0, 0, w, h).data;
