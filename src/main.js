@@ -1,4 +1,5 @@
 // Точка входа: рендерер, постобработка, загрузка мира, меню, создание героя, игровой цикл.
+import { buildMount } from './chars/horse.js';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -323,5 +324,6 @@ class App {
 const app = new App();
 window.__app = app;
 window.__bosses = BOSSES;
+window.__horse = { buildMount };
 app.loop();
 app.load().catch(e => { console.error(e); $('load-text').textContent = 'Ошибка загрузки: ' + e.message; });

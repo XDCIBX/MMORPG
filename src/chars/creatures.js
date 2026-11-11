@@ -7,6 +7,7 @@ import { clamp, lerp, smoothstep } from '../core/util.js';
 import { FX } from '../fx/particles.js';
 import { scaleTex, furTex, stoneWall } from '../core/textures.js';
 import { Creature } from './creature_base.js';
+import { horseFromDef } from './horse.js';
 import { Beast } from './beasts.js';
 
 const cmats = new Map();
@@ -414,7 +415,7 @@ export function buildCreature(def, opts = {}) {
     case 'wolf': c = new Beast(def, 'wolf'); break;
     case 'boar': c = new Beast(def, 'boar'); break;
     case 'bear': c = new Beast(def, 'bear'); break;
-    case 'horse': c = new Beast(def, 'horse'); break;
+    case 'horse': c = horseFromDef(def); break;
     case 'spider': c = new Spider(def); break;
     case 'golem': c = new Golem(def); break;
     case 'wraith': c = new Wraith(def); break;

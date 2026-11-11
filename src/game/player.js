@@ -7,7 +7,7 @@ import { CLASSES, BRANCH_LEVEL, xpNeeded } from '../data/classes.js';
 import { SLOTS, starterKit, makePotion } from '../data/items.js';
 import { castSkill, levelUpFx, hitFx } from './skills.js';
 import { FX } from '../fx/particles.js';
-import { buildMount } from '../chars/beasts.js';
+import { buildMount, prepareMount } from '../chars/horse.js';
 import { WeaponTrail } from '../fx/trails.js';
 import { clamp, angleLerp } from '../core/util.js';
 
@@ -39,6 +39,8 @@ export class Player extends Entity {
     super(game);
     this.team = 'player';
     this.cls = data.cls;
+    // заранее вылепить модель скакуна в свободное время, чтобы призыв был без задержки
+    setTimeout(() => { try { prepareMount(this.cls); } catch (e) { console.warn(e); } }, 6000);
     this.C = CLASSES[data.cls];
     this.playerName = data.name || 'Герой';
     this.female = !!data.female;
@@ -433,7 +435,7 @@ export class Player extends Entity {
     }
     // модель
     this.model.update(dt, { speed: this.mounted ? 0 : this.moveSpeed, runSpeed: this.speed, airborne: !this.mounted && (!this.onGround || this.jumpOffset > 0.3), mounted: this.mounted, mountSpeed: Math.abs(this.moveSpeed) });
-    if (this.mounted) this.mount.update(dt, { speed: this.moveSpeed });
+    if (this.mounted) this.mount.update(dt, { speed: this.moveSpeed, airborne: this.jumpOffset > 0.25 });
     // светящийся след клинка во время удара
     const M = this.model;
     const swing = M.action && ['slash', 'slash2', 'slam', 'sweep', 'thrust', 'bash'].includes(M.actionName) && M.actionT > 0.18 && M.actionT < 0.78;
@@ -449,7 +451,7 @@ export class Player extends Entity {
       m.root.position.set(this.pos.x, this.pos.y + this.jumpOffset, this.pos.z);
       m.root.rotation.y = this.yaw;
       const bob = (m.torso.position.y - m.bodyH) * m.root.scale.y;
-      const fwd = 0.06;
+      const fwd = (m.seatZ || 0) * m.root.scale.z + 0.04;
       r.position.set(this.pos.x + Math.sin(this.yaw) * fwd, this.pos.y + this.jumpOffset + m.seatY + bob - this.model.hipY * r.scale.y + 0.06, this.pos.z + Math.cos(this.yaw) * fwd);
       r.rotation.y = this.yaw;
       return;
@@ -466,6 +468,7 @@ export class Player extends Entity {
     if (g.mobs.engagedCount > 0) { g.ui.error('Нельзя призвать скакуна в бою'); return; }
     if (g.world.standY(this.pos.x, this.pos.z) < -1) { g.ui.error('Нельзя призвать скакуна в воде'); return; }
     this.mountCast = 1.2;
+    prepareMount(this.cls);
     this.casting = null;
     this.model.playAction('cast2', 1.2);
     g.effects.runeDecal(this.pos.clone(), '#ffd860', 2.4, 1.4, 2);

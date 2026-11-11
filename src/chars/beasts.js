@@ -350,28 +350,4 @@ export class Beast extends Creature {
   }
 }
 
-// Ездовые животные для героев
-export const MOUNTS = {
-  dwarf: { name: 'Боевой пони', def: { fur: '#5a3a24', fur2: '#3a2416', belly: '#7a5a3a', mane: '#e8e0d0', sock: '#e8e0d0' }, scale: 0.82, saddle: { cloth: '#2d4f8a', trim: '#c9a640', armor: '#8a95a5' } },
-  warrior: { name: 'Боевой конь', def: { fur: '#1c1a1a', fur2: '#141212', belly: '#2a2626', mane: '#0c0a0a', sock: '#e8e4dc' }, scale: 1.0, saddle: { cloth: '#8a1c1c', trim: '#d4a640', armor: '#a8acb2' } },
-  archer: { name: 'Лесной скакун', def: { fur: '#8a5a32', fur2: '#6a4224', belly: '#c8a070', mane: '#2a1a10', sock: '#3a2416' }, scale: 0.98, saddle: { cloth: '#3a5a2a', trim: '#b08a3a' } },
-  mage: { name: 'Белый единорог', def: { fur: '#eae6e0', fur2: '#d8d2ca', belly: '#f4f0ea', mane: '#c8d8ff', sock: '#ffffff' }, scale: 1.0, saddle: { cloth: '#2a3a9a', trim: '#e0e8ff', glow: '#80c0ff' }, horn: '#e8e0ff' },
-  necro: { name: 'Конь-призрак', def: { fur: '#2a2a30', fur2: '#18181c', belly: '#3a3a40', mane: '#40ff90', sock: '#1a1a1a', eye: '#40ff90' }, scale: 1.0, saddle: { cloth: '#1a2a1a', trim: '#6aa080', glow: '#40ff90' } },
-};
-
-export function buildMount(cls) {
-  const M = MOUNTS[cls] || MOUNTS.warrior;
-  const b = new Beast(M.def, 'horse', { saddle: M.saddle });
-  if (M.horn) {
-    const hg = new THREE.ConeGeometry(0.03, 0.4, 10);
-    const horn = b.m(hg, gemMat(M.horn, 1.2), b.head, 0, b.S.skull[1] * 0.9, b.S.skull[2] * 0.7);
-    horn.rotation.x = 0.7;
-  }
-  b.root.scale.setScalar(M.scale);
-  b.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
-  b.mountName = M.name;
-  b.seatY = (b.bodyH + b.S.barrel[1] * 1.0) * M.scale;
-  return b;
-}
-
 void lerp;
