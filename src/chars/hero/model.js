@@ -133,12 +133,24 @@ export class HeroModel extends Humanoid {
       this.hairMeshes.push(m);
       m.userData.isBeard = p.meta.name === 'beard';
     }
-    // глаза
+    // глаза (двигаются) и веки для моргания
+    this.eyeMeshes = []; this.blinkLids = [];
+    const lidMat = heroMat('skin', s.skin || '#d9a77f');
     for (const e of H.eyes) {
-      const em = new THREE.Mesh(new THREE.SphereGeometry(e.r, 20, 14), eyeMaterial(s.eyes && s.eyes.color || '#3a5a7a', s.eyes && s.eyes.glow));
+      const em = new THREE.Mesh(new THREE.SphereGeometry(e.r, 24, 16), eyeMaterial(s.eyes && s.eyes.color || '#3a5a7a', s.eyes && s.eyes.glow));
       em.position.set(...e.c);
       this.j.head.add(em);
+      this.eyeMeshes.push(em);
+      // верхнее веко: сферический сегмент перед глазом; в покое спрятано в запечённом веке
+      const lg = new THREE.SphereGeometry(e.r * 1.16, 24, 10, Math.PI / 2 - 1.05, 2.1, 0, 1.12);
+      lg.setAttribute('aAO', new THREE.BufferAttribute(new Uint8Array(lg.attributes.position.count).fill(205), 1, true));
+      const lid = new THREE.Mesh(lg, lidMat);
+      lid.position.set(...e.c);
+      this.j.head.add(lid);
+      this.blinkLids.push(lid);
     }
+    this.eyeT = 0; this.eyeGoal = [0, 0]; this.eyeCur = [0, 0]; this.blinkT = 2 + Math.random() * 3; this.blinkK = 0;
+    this.updateExtra = (dt) => this.animateFace(dt);
     for (const n in BIND_POSE) this.j[n].rotation.set(0, 0, 0);
     this.equipped = {};
     for (const sl of ['chest', 'legs', 'feet']) this.equipArmor(sl, null);
@@ -196,6 +208,24 @@ export class HeroModel extends Humanoid {
     }
     this.capeObj = pivot;
     this.cape = pivot;
+  }
+
+  // Живое лицо: взгляд перескакивает с точки на точку, периодическое моргание
+  animateFace(dt) {
+    this.eyeT -= dt;
+    if (this.eyeT < 0) {
+      this.eyeT = 0.5 + Math.random() * 2.2;
+      this.eyeGoal = Math.random() < 0.45 ? [0, 0] : [(Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.22];
+    }
+    const k = 1 - Math.exp(-dt * 25);
+    this.eyeCur[0] += (this.eyeGoal[0] - this.eyeCur[0]) * k;
+    this.eyeCur[1] += (this.eyeGoal[1] - this.eyeCur[1]) * k;
+    for (const em of this.eyeMeshes) em.rotation.set(this.eyeCur[1], this.eyeCur[0], 0);
+    this.blinkT -= dt;
+    if (this.blinkT < 0) { this.blinkT = 2.2 + Math.random() * 4; this.blinkK = 1; if (Math.random() < 0.15) this.blinkT = 0.25; }
+    this.blinkK = Math.max(0, this.blinkK - dt / 0.16);
+    const closed = this.deadT >= 0 ? 1 : Math.sin(this.blinkK * Math.PI);
+    for (const l of this.blinkLids) { l.rotation.x = -0.28 + closed * 1.05 + this.eyeCur[1] * 0.3; l.visible = closed > 0.02; }
   }
 
   // Видимость областей тела: под бронёй — скрыть, без брони — базовая одежда

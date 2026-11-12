@@ -83,9 +83,9 @@ vec3 facePaint(vec3 c) {
   c = mix(c, c * vec3(1.03, 1.02, 1.0), smoothstep(0.02, 0.06, q.y) * step(0.05, q.z) * 0.4);
   // губы
   float dl = length(vec2(q.x / 0.0215, (q.y + 0.067) / 0.0125));
-  vec3 lip = mix(uLip, skin * vec3(0.95, 0.72, 0.72), 0.25);
-  if (q.z > 0.085) c = mix(c, lip, (1.0 - smoothstep(0.75, 1.02, dl)) * mix(0.5, 0.85, F));
-  if (q.z > 0.092) c = mix(c, vec3(0.16, 0.06, 0.06), (1.0 - smoothstep(0.0006, 0.0016, abs(q.y + 0.0668))) * (1.0 - smoothstep(0.019, 0.022, abs(q.x))) * 0.55);
+  vec3 lip = mix(uLip, skin * vec3(0.95, 0.66, 0.66), mix(0.35, 0.15, F));
+  if (q.z > 0.082) c = mix(c, lip, (1.0 - smoothstep(0.72, 1.02, dl)) * mix(0.62, 0.88, F));
+  if (q.z > 0.088) c = mix(c, vec3(0.16, 0.06, 0.06), (1.0 - smoothstep(0.0006, 0.0016, abs(q.y + 0.0668))) * (1.0 - smoothstep(0.019, 0.022, abs(q.x))) * 0.55);
   // тень под носом
   float subn = (1.0 - smoothstep(0.0, 0.006, length(vec2(abs(q.x) - 0.0065, (q.y + 0.046) * 1.6)))) * step(0.095, q.z);
   c = mix(c, c * vec3(0.55, 0.45, 0.45), subn * 0.5);
@@ -207,8 +207,8 @@ export function heroMat(kind, color, opts = {}) {
   let m;
   switch (kind) {
     case 'skin':
-      m = new THREE.MeshPhysicalMaterial({ color, roughness: 0.5, metalness: 0, sheen: 0.4, sheenRoughness: 0.55, sheenColor: new THREE.Color('#ff9a80') });
-      patch(m, { tex: pores(), scale: 22, bump: 0.25, colorMod: 0.06, key: 'skin' + (opts.face ? 'f' : ''), face: opts.face || null });
+      m = new THREE.MeshPhysicalMaterial({ color, roughness: 0.6, metalness: 0, sheen: 0.22, sheenRoughness: 0.75, sheenColor: new THREE.Color('#ff8a70'), specularIntensity: 0.42, envMapIntensity: 0.55 });
+      patch(m, { tex: pores(), scale: 26, bump: 0.32, colorMod: 0.05, key: 'skin' + (opts.face ? 'f' : ''), face: opts.face || null });
       break;
     case 'metal': {
       const pt = plateTex();
