@@ -107,6 +107,15 @@ export function hairPieces(kit, spec) {
           d = smin(d, smax(br * hk, -(b - 0.004), 0.004), 0.008 * hk);
         }
       }
+      if (style === 'bun') {
+        const bun = Math.hypot(lx / 1.1, ly - 0.035, lz + 0.105) - 0.042 + 0.003 * Math.sin(th * 9 + ly * 90);
+        d = smin(d, bun * hk, 0.012 * hk);
+      }
+      if (style === 'mohawk') {
+        // гребень вдоль головы
+        const strip = Math.max(b - (0.034 + 0.006 * Math.sin(lz * 160)) * hk, -(b + 0.004), (Math.abs(lx) - 0.011) * hk, (-0.03 - ly - Math.max(0, lz) * 2) * hk);
+        return strip;
+      }
       return d;
     };
     const b = [HC.x - 0.16 * hk, HC.y - (long ? 0.42 : pony ? 0.36 : braids ? 0.4 : 0.14) * hk, HC.z - 0.2 * hk, HC.x + 0.16 * hk, HC.y + 0.155 * hk, HC.z + 0.16 * hk];

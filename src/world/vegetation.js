@@ -4,7 +4,7 @@ import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometr
 import { mulberry32, Noise, smoothstep } from '../core/util.js';
 import { WORLD_HALF, CITIES, SECRET_SHOPS, POIS, BIOMES } from '../data/world.js';
 import { IS_PHONE } from '../core/device.js';
-import { barkTex, leafCard, pineCard } from '../core/textures.js';
+import { barkTex, leafCard, pineCard, terrainLayers } from '../core/textures.js';
 
 export const windUniforms = { uTime: { value: 0 } };
 
@@ -226,14 +226,96 @@ const TREE_BUILDERS = {
 };
 TREE_BUILDERS.snowpine = (rnd) => TREE_BUILDERS.pine(rnd, true);
 
-function rockGeo(rnd, tint) {
-  const g = blob(1, 1, rnd, N, 1.2, 0.75, 1);
+// Камень: шар, обрубленный случайными плоскостями (сколы), с уступами-пластами и шумом.
+// kind: small — мелкий валун, big — крупный, crag — высокий утёс с резкими гранями
+function rockGeo(rnd, tint, kind = 'small') {
+  let g = new THREE.IcosahedronGeometry(1, kind === 'small' ? 2 : 3);
+  g.deleteAttribute('normal'); g.deleteAttribute('uv');
+  g = mergeVertices(g);
+  const crag = kind === 'crag';
+  const planes = [];
+  const np = crag ? 12 : 8;
+  for (let i = 0; i < np; i++) {
+    const n = new THREE.Vector3(rnd() * 2 - 1, (rnd() * 2 - 1) * (crag ? 0.35 : 0.8), rnd() * 2 - 1).normalize();
+    planes.push([n, 0.5 + rnd() * 0.38]);
+  }
+  if (!crag) planes.push([new THREE.Vector3(0, 1, 0), 0.55 + rnd() * 0.25]); // плоская макушка
+  const p = g.attributes.position;
+  const off = rnd() * 100;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.set(p.getX(i), p.getY(i), p.getZ(i));
+    for (const [n, d] of planes) { const dd = v.dot(n) - d; if (dd > 0) v.addScaledVector(n, -dd * 0.94); }
+    const k = 1 + N.fbm(v.x * 1.7 + off, (v.y * 1.3 + v.z) * 1.7, 3) * 0.16;
+    v.multiplyScalar(k);
+    // уступы-пласты
+    const ly = v.y * (crag ? 4.2 : 3.2) + N.noise(v.x * 1.5 + off, v.z * 1.5) * 0.6;
+    const ledge = smoothstep(0.35, 0.5, ly - Math.floor(ly)) - 0.5;
+    v.x *= 1 + ledge * 0.07; v.z *= 1 + ledge * 0.07;
+    if (crag) { v.y = v.y * 1.3 + 0.45; const tp = 1 - smoothstep(0.2, 1.8, v.y) * 0.38; v.x *= 1.05 * tp; v.z *= 1.05 * tp; }
+    else { v.x *= 1.2; v.y *= 0.78; }
+    p.setXYZ(i, v.x, v.y, v.z);
+  }
+  if (crag) g = g.toNonIndexed();
+  g.computeVertexNormals();
   return colorize(g, (c, x, y, z, nx, ny) => {
-    const v = 0.85 + N.noise(x * 2, z * 2 + y) * 0.15;
-    c.setRGB(tint[0] * v, tint[1] * v, tint[2] * v);
-    if (ny > 0.6 && tint.moss) c.lerp(new THREE.Color(0.22, 0.32, 0.12), 0.6);
-    if (ny > 0.5 && tint.snow) c.setRGB(0.9, 0.93, 0.97);
+    const vv = 0.82 + N.fbm(x * 2.3 + off, z * 2.3 + y * 1.7, 2) * 0.22;
+    c.setRGB(tint[0] * vv, tint[1] * vv, tint[2] * vv);
+    const patch = N.noise(x * 3 + off, z * 3) * 0.25;
+    if (tint.moss && ny + patch > 0.62) c.lerp(new THREE.Color(0.2, 0.3, 0.11), 0.65);
+    if (tint.snow && ny + patch * 0.6 > 0.45) c.setRGB(0.9, 0.93, 0.97);
+    if (ny < -0.2) c.multiplyScalar(0.7);
   });
+}
+
+// Материал камней: трипланарная фактура скалы и рельеф в мировых координатах
+function rockMaterial() {
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0 });
+  const tex = terrainLayers();
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.tLayers = { value: tex };
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vRW; varying vec3 vRN;')
+      .replace('#include <project_vertex>', `#include <project_vertex>
+        #ifdef USE_INSTANCING
+          vRW = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+          vRN = mat3(modelMatrix) * mat3(instanceMatrix) * objectNormal;
+        #else
+          vRW = (modelMatrix * vec4(transformed, 1.0)).xyz;
+          vRN = mat3(modelMatrix) * objectNormal;
+        #endif`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+        uniform sampler2D tLayers; varying vec3 vRW; varying vec3 vRN; float gRockH;
+        float rockTri(float sc) {
+          vec3 an = abs(normalize(vRN)); an = pow(an, vec3(3.0)); an /= (an.x + an.y + an.z);
+          return texture2D(tLayers, vRW.zy * sc).g * an.x + texture2D(tLayers, vRW.xz * sc).g * an.y + texture2D(tLayers, vRW.xy * sc).g * an.z;
+        }
+        vec3 rockPerturb(vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDirection) {
+          vec3 sx = dFdx(surf_pos), sy = dFdy(surf_pos);
+          if (dot(sx, sx) < 1e-12 || dot(sy, sy) < 1e-12) return surf_norm;
+          vec3 vSigmaX = normalize(sx), vSigmaY = normalize(sy);
+          vec3 R1 = cross(vSigmaY, surf_norm), R2 = cross(surf_norm, vSigmaX);
+          float fDet = dot(vSigmaX, R1) * faceDirection;
+          vec3 n = abs(fDet) * surf_norm - sign(fDet) * (dHdxy.x * R1 + dHdxy.y * R2);
+          float l = length(n);
+          return l > 1e-6 ? n / l : surf_norm;
+        }`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        float h1 = rockTri(0.33), h2 = rockTri(0.06);
+        gRockH = h1 * 0.7 + h2 * 0.5;
+        float st = sin(vRW.y * 5.5 + (h2 - 0.5) * 6.0);
+        diffuseColor.rgb *= mix(0.55, 1.32, h1) * mix(0.8, 1.16, h2) * (1.0 + st * 0.06);
+        diffuseColor.rgb *= mix(0.6, 1.0, smoothstep(0.12, 0.42, h1 * 0.6 + h2 * 0.55));`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        {
+          float fd = 1.0 - smoothstep(60.0, 160.0, length(vViewPosition));
+          vec2 dH = vec2(dFdx(gRockH), dFdy(gRockH)) * 3.2 * fd;
+          if (dot(dH, dH) > 1e-10) normal = rockPerturb(-vViewPosition, normal, dH, faceDirection);
+        }`);
+  };
+  m.customProgramCacheKey = () => 'rockTri';
+  return m;
 }
 
 function bushGeo(rnd, col) {
@@ -280,7 +362,8 @@ const CH = 160; // размер чанка деревьев
 const GCH = 40; // размер чанка травы
 
 export class Vegetation {
-  constructor(scene, terrain, collision) {
+  constructor(scene, terrain, collision, extraTrees = []) {
+    this.extraTrees = extraTrees;
     this.scene = scene;
     this.terrain = terrain;
     this.collision = collision;
@@ -300,7 +383,7 @@ export class Vegetation {
       pine: windMaterial(0.03, 2.5, leafOpts(pineCard(false))),
       pinesnow: windMaterial(0.03, 2.5, leafOpts(pineCard(true))),
     };
-    this.rockMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: false });
+    this.rockMat = rockMaterial();
     this.bushMat = windMaterial(0.06, 0.2, leafOpts(leafCard('broad')));
     this.chunks = [];
     this.grassChunks = new Map();
@@ -319,11 +402,16 @@ export class Vegetation {
       this.variants[k] = [];
       for (let v = 0; v < 3; v++) this.variants[k].push(TREE_BUILDERS[k](rnd));
     }
+    const rockSet = (tint) => ({
+      small: [rockGeo(rnd, tint, 'small'), rockGeo(rnd, tint, 'small'), rockGeo(rnd, tint, 'small')],
+      big: [rockGeo(rnd, tint, 'big'), rockGeo(rnd, tint, 'big')],
+      crag: [rockGeo(rnd, tint, 'crag'), rockGeo(rnd, tint, 'crag')],
+    });
     this.rockVariants = {
-      normal: [rockGeo(rnd, Object.assign([0.48, 0.46, 0.43], { moss: true })), rockGeo(rnd, Object.assign([0.5, 0.48, 0.45], { moss: true }))],
-      grey: [rockGeo(rnd, [0.52, 0.52, 0.54]), rockGeo(rnd, [0.46, 0.47, 0.5])],
-      snow: [rockGeo(rnd, Object.assign([0.5, 0.52, 0.56], { snow: true }))],
-      dark: [rockGeo(rnd, [0.17, 0.14, 0.13]), rockGeo(rnd, [0.22, 0.17, 0.15])],
+      normal: rockSet(Object.assign([0.58, 0.55, 0.5], { moss: true })),
+      grey: rockSet([0.6, 0.58, 0.55]),
+      snow: rockSet(Object.assign([0.6, 0.6, 0.6], { snow: true })),
+      dark: rockSet([0.2, 0.16, 0.15]),
     };
     this.bushVariants = {
       green: bushGeo(rnd, [0.55, 0.78, 0.4]),
@@ -354,6 +442,19 @@ export class Vegetation {
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
     const up = new THREE.Vector3(0, 1, 0);
     const clusterN = new Noise(555);
+    // Деревья в городах (места выбирает город)
+    for (const t of this.extraTrees) {
+      const type = rnd() < 0.55 ? 'oak' : 'birch';
+      const vi = Math.floor(rnd() * 3);
+      const v = this.variants[type][vi];
+      const sc = 0.62 + rnd() * 0.22;
+      q.setFromAxisAngle(up, rnd() * Math.PI * 2);
+      s.set(sc, sc, sc);
+      p.set(t.x, t.y - 0.05, t.z);
+      m4.compose(p, q, s);
+      add('t_' + type + vi, v.trunk, this.barkMats[v.bark], t.x, t.z, m4.clone());
+      if (v.leaves) add('l_' + type + vi, v.leaves, this.leafMats[v.leaf], t.x, t.z, m4.clone());
+    }
     // Деревья
     const step = IS_PHONE ? 8.5 : 7;
     for (let z = -WORLD_HALF + 20; z < WORLD_HALF - 20; z += step) {
@@ -386,6 +487,29 @@ export class Vegetation {
         this.collision.addCircle(px, pz, v.r * sc);
       }
     }
+    // Утёсы и скальные зубцы на крутых склонах гор
+    for (let i = 0; i < 4200; i++) {
+      const px = (rnd() * 2 - 1) * (WORLD_HALF - 12), pz = (rnd() * 2 - 1) * (WORLD_HALF - 12);
+      const h = T.getHeight(px, pz);
+      if (h < 3 || this.isBlocked(px, pz) || T.roadAt(px, pz) > 0.05) continue;
+      const B = T.biomeAt(px, pz);
+      const mountB = B.id === BIOMES.snow.id || B.id === BIOMES.volcanic.id || B.id === BIOMES.highland.id;
+      const edgeM = Math.max(Math.abs(px), Math.abs(pz)) > 640;
+      if (!mountB && !edgeM) continue;
+      const nrm = T.normalAt(px, pz);
+      if (nrm.y > 0.86 && rnd() < 0.8) continue;
+      const fam = B.id === BIOMES.snow.id ? 'snow' : B.id === BIOMES.volcanic.id ? 'dark' : 'grey';
+      const set = this.rockVariants[fam].crag;
+      const vi = Math.floor(rnd() * set.length);
+      const sc = 1.8 + rnd() * rnd() * 6.5;
+      // наклон по склону
+      q.setFromEuler(new THREE.Euler(nrm.z * 0.5 + (rnd() - 0.5) * 0.3, rnd() * 6.28, -nrm.x * 0.5 + (rnd() - 0.5) * 0.3));
+      s.set(sc * (0.9 + rnd() * 0.7), sc * (0.55 + rnd() * 0.6), sc * (0.9 + rnd() * 0.7));
+      p.set(px, h - sc * 0.55, pz);
+      m4.compose(p, q, s);
+      add('c_' + fam + vi, set[vi], this.rockMat, px, pz, m4.clone(), true);
+      this.collision.addCircle(px, pz, sc * 0.8);
+    }
     // Камни и кусты
     for (let i = 0; i < 9000; i++) {
       const px = (rnd() * 2 - 1) * (WORLD_HALF - 15), pz = (rnd() * 2 - 1) * (WORLD_HALF - 15);
@@ -395,15 +519,16 @@ export class Vegetation {
       const nrm = T.normalAt(px, pz);
       const isRock = rnd() < (nrm.y < 0.85 ? 0.85 : 0.35);
       if (isRock) {
-        const set = B.id === BIOMES.snow.id ? this.rockVariants.snow : B.id === BIOMES.volcanic.id ? this.rockVariants.dark : (B.id === BIOMES.highland.id ? this.rockVariants.grey : this.rockVariants.normal);
-        const vi = Math.floor(rnd() * set.length);
+        const fam = B.id === BIOMES.snow.id ? 'snow' : B.id === BIOMES.volcanic.id ? 'dark' : (B.id === BIOMES.highland.id ? 'grey' : 'normal');
         const big = rnd() < 0.15;
+        const set = this.rockVariants[fam][big ? 'big' : 'small'];
+        const vi = Math.floor(rnd() * set.length);
         const sc = big ? 2 + rnd() * 2.5 : 0.35 + rnd() * 0.9;
         q.setFromEuler(new THREE.Euler(rnd() * 0.4, rnd() * 6.28, rnd() * 0.4));
         s.set(sc, sc * (0.7 + rnd() * 0.5), sc);
         p.set(px, h - sc * 0.25, pz);
         m4.compose(p, q, s);
-        add('r_' + B.id + vi, set[vi], this.rockMat, px, pz, m4.clone(), big);
+        add('r_' + fam + (big ? 'b' : 's') + vi, set[vi], this.rockMat, px, pz, m4.clone(), big);
         if (sc > 1.2) this.collision.addCircle(px, pz, sc * 0.95);
       } else {
         if (B.id === BIOMES.snow.id || B.id === BIOMES.volcanic.id) continue;

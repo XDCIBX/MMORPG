@@ -70,6 +70,14 @@ export class Terrain {
         const m = Math.max(Math.abs(x), Math.abs(z));
         const edge = smoothstep(600, 770, m);
         h += edge * (55 + n.ridge(x * 0.01, z * 0.01, 4) * 60);
+        // скальные гребни и уступы-пласты на высоких склонах
+        const crag = Math.min(1, mount + edge);
+        if (crag > 0.01) {
+          const hi = smoothstep(20, 46, h);
+          h += (n.ridge(x * 0.021 + 3, z * 0.021 + 5, 3) - 0.35) * 9 * crag * hi;
+          const step = 5.5, tt = h / step, fl = Math.floor(tt), fr = tt - fl;
+          h = lerp(h, (fl + smoothstep(0.2, 0.8, fr)) * step, 0.5 * crag * hi);
+        }
         // Озёра и лава
         for (const L of LAKES.concat(LAVA_POOLS)) {
           const d = Math.hypot(x - L.x, z - L.z);
@@ -164,6 +172,7 @@ export class Terrain {
     const pos = new Float32Array(V * V * 3);
     const col = new Float32Array(V * V * 3);
     const splat = new Float32Array(V * V * 3);
+    const rockA = new Float32Array(V * V * 4);
     for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) {
       const idx = j * V + i;
       pos[idx * 3] = -WORLD_HALF + i * CELL;
@@ -188,7 +197,7 @@ export class Terrain {
     for (let idx = 0; idx < V * V; idx++) {
       const x = pos[idx * 3], h = pos[idx * 3 + 1], z = pos[idx * 3 + 2];
       const ny = nrm[idx * 3 + 1];
-      let r = 0, gg = 0, b = 0;
+      let r = 0, gg = 0, b = 0, kr = 0, kg = 0, kb = 0;
       const patch = n.fbm(x * 0.02, z * 0.02, 3) * 0.5 + 0.5;
       const dirtPatch = smoothstep(0.62, 0.8, n.fbm(x * 0.015 + 9, z * 0.015, 3) * 0.5 + 0.5);
       for (let bi = 0; bi < nb; bi++) {
@@ -203,10 +212,13 @@ export class Terrain {
         const rockT = smoothstep(0.86, 0.68, ny);
         for (let c = 0; c < 3; c++) tmp[c] = lerp(tmp[c], B.rock[c] * (0.85 + patch * 0.3), rockT);
         r += tmp[0] * w; gg += tmp[1] * w; b += tmp[2] * w;
+        kr += B.rock[0] * w; kg += B.rock[1] * w; kb += B.rock[2] * w;
       }
       // снег на высоких пиках
       const hotW = this.biomeW[idx * nb + BIOMES.volcanic.id] + this.biomeW[idx * nb + BIOMES.swamp.id];
       const snowT = smoothstep(48, 70, h) * smoothstep(0.55, 0.8, ny) * (1 - Math.min(1, hotW * 1.5));
+      rockA[idx * 4] = Math.pow(kr, 2.2); rockA[idx * 4 + 1] = Math.pow(kg, 2.2); rockA[idx * 4 + 2] = Math.pow(kb, 2.2);
+      rockA[idx * 4 + 3] = 1 - Math.min(1, hotW * 1.5);
       r = lerp(r, 0.92, snowT); gg = lerp(gg, 0.94, snowT); b = lerp(b, 0.98, snowT);
       // песок/ил у воды
       const swampW = this.biomeW[idx * nb + BIOMES.swamp.id];
@@ -232,6 +244,7 @@ export class Terrain {
     }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     g.setAttribute('aSplat', new THREE.BufferAttribute(splat, 3));
+    g.setAttribute('aRock', new THREE.BufferAttribute(rockA, 4));
     g.computeBoundingSphere();
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
     const detail = terrainDetail();
@@ -240,13 +253,13 @@ export class Terrain {
       sh.uniforms.tDetail = { value: detail };
       sh.uniforms.tLayers = { value: layers };
       sh.vertexShader = sh.vertexShader
-        .replace('#include <common>', '#include <common>\nattribute vec3 aSplat;\nvarying vec3 vWPos;\nvarying vec3 vSplat;\nvarying vec3 vWNrm;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWPos = (modelMatrix * vec4(position,1.0)).xyz;\nvSplat = aSplat;\nvWNrm = normal;');
+        .replace('#include <common>', '#include <common>\nattribute vec3 aSplat;\nattribute vec4 aRock;\nvarying vec3 vWPos;\nvarying vec3 vSplat;\nvarying vec3 vWNrm;\nvarying vec4 vRock;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWPos = (modelMatrix * vec4(position,1.0)).xyz;\nvSplat = aSplat;\nvWNrm = normal;\nvRock = aRock;');
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
-          varying vec3 vWPos; varying vec3 vSplat; varying vec3 vWNrm;
+          varying vec3 vWPos; varying vec3 vSplat; varying vec3 vWNrm; varying vec4 vRock;
           uniform sampler2D tDetail; uniform sampler2D tLayers;
-          float gTerrH;
+          float gTerrH; float gRock; float gSnow; float gMacroH;
           // рельеф по высоте (bump) без отдельной карты нормалей
           vec3 terrPerturb(vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDirection) {
             vec3 sx = dFdx(surf_pos), sy = dFdy(surf_pos);
@@ -268,21 +281,47 @@ export class Terrain {
           float hg = texture2D(tLayers, vWPos.xz * 0.21).r;
           vec3 an = abs(normalize(vWNrm)); an /= (an.x + an.y + an.z);
           float hr = texture2D(tLayers, vWPos.xz * 0.07).g * an.y + texture2D(tLayers, vWPos.zy * 0.07).g * an.x + texture2D(tLayers, vWPos.xy * 0.07).g * an.z;
+          float hr2 = texture2D(tLayers, vWPos.xz * 0.33).g * an.y + texture2D(tLayers, vWPos.zy * 0.33).g * an.x + texture2D(tLayers, vWPos.xy * 0.33).g * an.z;
+          hr = hr * 0.62 + hr2 * 0.38;
           float hd = texture2D(tLayers, vWPos.xz * 0.16).b;
           vec3 w = vSplat / max(0.001, vSplat.x + vSplat.y + vSplat.z);
+          // скала по крутизне склона — попиксельно, с рваной границей по фактуре
+          vec3 nW = normalize(vWNrm);
+          float slope = 1.0 - nW.y;
+          float rk = smoothstep(0.17, 0.3, slope + (hr - 0.5) * 0.14 + (d2.g - 0.5) * 0.07);
+          rk = max(rk, w.y * 0.6);
+          // крупная фактура скал, видимая издалека
+          float hm = texture2D(tLayers, vWPos.xz * 0.011).g * an.y + texture2D(tLayers, vWPos.zy * 0.011).g * an.x + texture2D(tLayers, vWPos.xy * 0.011).g * an.z;
+          gMacroH = hm;
+          // пласты породы: полосы по высоте с изгибами
+          float warp = (d2.r - 0.5) * 5.0 + (hm - 0.5) * 4.0 + sin(vWPos.x * 0.021 + vWPos.z * 0.017) * 1.6;
+          float st1 = sin(vWPos.y * 1.15 + warp + vWPos.x * 0.03);
+          float st2 = sin(vWPos.y * 4.3 + warp * 2.0 - vWPos.z * 0.05);
+          float strata = 1.0 + (smoothstep(-0.5, 0.5, st1) - 0.5) * 0.13 + st2 * 0.04;
+          vec3 rockCol = vRock.rgb * strata * mix(0.5, 1.3, hr) * mix(0.78, 1.18, hm);
+          rockCol = mix(rockCol, vec3(dot(rockCol, vec3(0.33))) * vec3(0.96, 0.98, 1.02), 0.3);
+          // трещины и ниши темнее
+          rockCol *= mix(0.62, 1.0, smoothstep(0.1, 0.4, hr * 0.6 + hm * 0.6));
+          w = mix(w, vec3(0.0, 1.0, 0.0), rk);
           gTerrH = hg * w.x + hr * w.y + hd * w.z;
-          float shade = mix(0.72, 1.18, hg) * w.x + mix(0.55, 1.25, hr) * w.y + mix(0.68, 1.22, hd) * w.z;
+          float shade = mix(0.72, 1.18, hg) * vSplat.x + mix(0.68, 1.22, hd) * vSplat.z + vSplat.y;
           diffuseColor.rgb *= shade * macro;
-          // скалы холоднее и серее
-          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(dot(diffuseColor.rgb, vec3(0.33))) * vec3(0.95, 0.97, 1.0), w.y * 0.35);`)
+          diffuseColor.rgb = mix(diffuseColor.rgb, rockCol, rk);
+          // снег на высоких пологих местах, рваная кромка
+          float sn = smoothstep(42.0, 58.0, vWPos.y + (d2.g - 0.5) * 16.0 + (hm - 0.5) * 8.0) * smoothstep(0.52, 0.74, nW.y + (hr - 0.5) * 0.25) * vRock.a;
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.9, 0.96) * mix(0.9, 1.05, d1.r), sn);
+          gRock = rk * (1.0 - sn); gSnow = sn;`)
         .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
           {
-            float fade = 1.0 - smoothstep(25.0, 90.0, length(vViewPosition));
-            vec2 dH = vec2(dFdx(gTerrH), dFdy(gTerrH)) * (1.2 + vSplat.y * 2.0) * fade;
-            if (fade > 0.001) normal = terrPerturb(-vViewPosition, normal, dH, faceDirection);
+            float dist = length(vViewPosition);
+            float fade = 1.0 - smoothstep(25.0, 90.0, dist);
+            vec2 dH = vec2(dFdx(gTerrH), dFdy(gTerrH)) * (1.2 + gRock * 2.6) * fade * (1.0 - gSnow * 0.7);
+            // крупный рельеф скал не пропадает вдали
+            dH += vec2(dFdx(gMacroH), dFdy(gMacroH)) * gRock * 9.0 * (1.0 - smoothstep(350.0, 700.0, dist));
+            if (dot(dH, dH) > 1e-10) normal = terrPerturb(-vViewPosition, normal, dH, faceDirection);
           }`)
         .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-          roughnessFactor = mix(0.95, 0.75, vSplat.y * gTerrH);`);
+          roughnessFactor = mix(mix(0.95, 0.78, gRock * gTerrH), 0.55, gSnow);`);
     };
     this.mesh = new THREE.Mesh(g, mat);
     this.mesh.receiveShadow = true;

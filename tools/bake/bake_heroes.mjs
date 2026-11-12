@@ -16,6 +16,7 @@ const OUT = path.resolve('models');
 fs.mkdirSync(OUT, { recursive: true });
 const log = (...a) => console.log(...a);
 const QUALITY = Number(process.env.Q || 1); // 1 — финальное, 0.5 — быстрый черновик
+let Q = QUALITY, TQ = 1, TQH = 1; // сетка, бюджет треугольников тела/деталей и головы
 
 const REGION_OF = {
   hips: 'pelvis', spine: 'torso', chest: 'torso', neck: 'neck', head: 'head',
@@ -110,11 +111,32 @@ function groupTris(index, triGroup, nGroups) {
   return { index: new Uint32Array(out), groups };
 }
 
+// Модели NPC: человек (м/ж) и гном со всеми видами одежды и причёсками, облегчённые
+const NPC_CFG = {
+  npc_m: { spec: { skin: '#d8a882', torsoW: 1.04, limb: 1.02, hair: { style: 'short', color: '#3a2a1a' } }, hairs: ['short', 'long'], beards: ['short', 'dwarf'], cls: 'warrior' },
+  npc_f: { spec: { female: true, skin: '#e8c0a0', legLen: 1.02, hair: { style: 'long', color: '#3a2a1a' } }, hairs: ['long', 'bun', 'ponytail'], beards: [], cls: 'warrior' },
+  npc_dwarf: { spec: { skin: '#d09a78', legLen: 0.72, armLen: 0.9, torsoW: 1.32, torsoD: 1.25, limb: 1.35, head: 1.15, neckLen: 0.5, hair: { style: 'braids', color: '#3a2a1a' }, beard: 'dwarf' }, hairs: ['braids', 'mohawk'], beards: ['dwarf'], cls: 'dwarf' },
+};
+
 async function bakeKey(cls, sex) {
   const C = CLASSES[cls];
   const spec = JSON.parse(JSON.stringify(sex === 'f' ? C.look.female : C.look.male));
   spec.female = sex === 'f';
-  const key = cls + '_' + sex;
+  Q = QUALITY; TQ = 1; TQH = 1;
+  await bakeModel({ key: cls + '_' + sex, spec, kinds: [C.armorType], cls, hairSets: [['', spec]] });
+}
+async function bakeNpc(key) {
+  const c = NPC_CFG[key];
+  const spec = JSON.parse(JSON.stringify(c.spec));
+  spec.female = !!spec.female;
+  Q = 0.6 * QUALITY; TQ = 0.45; TQH = 0.62;
+  const hairSets = [];
+  for (const st of c.hairs) hairSets.push([':' + st, Object.assign({}, spec, { hair: { style: st, color: '#000000' }, beard: null })]);
+  for (const bd of c.beards) hairSets.push([':' + bd, Object.assign({}, spec, { hair: { style: 'none' }, beard: bd })]);
+  await bakeModel({ key, spec, kinds: ['heavy', 'leather', 'cloth'], cls: c.cls, hairSets });
+}
+
+async function bakeModel({ key, spec, kinds, cls, hairSets }) {
   log(`== ${key}`);
   const t0 = Date.now();
   const kit = makeKit(spec);
@@ -123,7 +145,7 @@ async function bakeKey(cls, sex) {
   const bodySdf = (x, y, z) => S.sdf(x, y, z);
   const pk = new Packer();
   const pieces = [];
-  const h = 0.0021 / QUALITY;
+  const h = 0.0021 / Q;
   // ---- тело ----
   {
     // тело и голова лепятся отдельно (голова — втрое мельче) и сшиваются по шее
@@ -132,10 +154,10 @@ async function bakeKey(cls, sex) {
     const bb = boundsOf(S);
     const hw = kit.bones.head.getWorldPosition(new THREE.Vector3());
     const rawB = meshSDF(bodySdf, [bb[0], bb[1], bb[2], bb[3], yc, bb[5]], h, { log });
-    const mB = await simplifyAndFinish(bodySdf, rawB, Math.round(46000 * QUALITY), { log, lockBorder: true });
+    const mB = await simplifyAndFinish(bodySdf, rawB, Math.round(46000 * Q * TQ), { log, lockBorder: true });
     const hh = h * (Number(process.env.HEADRES) || 0.34);
     const rawH = meshSDF(bodySdf, [hw.x - 0.16 * kit.hk, yc, hw.z - 0.16 * kit.hk, hw.x + 0.16 * kit.hk, bb[4], hw.z + 0.18 * kit.hk], hh, { log });
-    const mH = await simplifyAndFinish(bodySdf, rawH, Math.round(34000 * QUALITY), { log, lockBorder: true, error: 0.0004 });
+    const mH = await simplifyAndFinish(bodySdf, rawH, Math.round(34000 * Q * TQH), { log, lockBorder: true, error: 0.0004 });
     const m = zipMeshes(mB, mH, yc, log);
     const nv = m.position.length / 3;
     const skinIndex = new Uint8Array(nv * 4), skinWeight = new Float32Array(nv * 4), ao = new Float32Array(nv), color = new Float32Array(nv * 3);
@@ -163,9 +185,16 @@ async function bakeKey(cls, sex) {
     pieces.push(packPiece(pk, { name: 'body', slot: 'body', ...m, index: g.index, groups: g.groups, mats: REGIONS, skinIndex, skinWeight, ao, color: null }));
   }
   // ---- волосы, борода ----
-  for (const hp of hairPieces(kit, spec)) pieces.push(await bakePiece(pk, kit, hp, bodySdf, h));
+  for (const [suffix, hs] of hairSets) for (const hp of hairPieces(kit, hs)) { hp.name += suffix; pieces.push(await bakePiece(pk, kit, hp, bodySdf, h)); }
   // ---- броня ----
-  if (!process.env.NOARMOR) for (const ap of armorPieces(kit, spec, C.armorType, cls)) pieces.push(await bakePiece(pk, kit, ap, bodySdf, h));
+  if (!process.env.NOARMOR) {
+    const seen = new Set();
+    for (const kind of kinds) for (const ap of armorPieces(kit, spec, kind, cls)) {
+      if (seen.has(ap.name)) continue; // базовая одежда общая для всех видов
+      seen.add(ap.name);
+      pieces.push(await bakePiece(pk, kit, ap, bodySdf, h));
+    }
+  }
   // ---- раскладка ----
   const L = kit.layout;
   const head = kit.bones.head;
@@ -192,7 +221,7 @@ async function bakePiece(pk, kit, ap, bodySdf, h) {
   const hh = h * (ap.res || 1.25);
   const raw = meshSDF(ap.sdf, ap.bounds, hh, { log });
   if (!raw.index.length) { log('    пусто!'); }
-  const m = await simplifyAndFinish(ap.sdf, raw, Math.round((ap.tris || 9000) * QUALITY), { log });
+  const m = await simplifyAndFinish(ap.sdf, raw, Math.round((ap.tris || 9000) * Q * TQ), { log });
   const nv = m.position.length / 3;
   const skinIndex = new Uint8Array(nv * 4), skinWeight = new Float32Array(nv * 4), ao = new Float32Array(nv);
   const p = new THREE.Vector3(), n = new THREE.Vector3();
@@ -228,4 +257,8 @@ for (const cls of Object.keys(CLASSES)) for (const sx of ['m', 'f']) all.push([c
 for (const [cls, sx] of all) {
   if (keys.length && !keys.includes(cls + '_' + sx)) continue;
   await bakeKey(cls, sx);
+}
+for (const k of Object.keys(NPC_CFG)) {
+  if (keys.length ? !keys.includes(k) : process.env.NONPC) continue;
+  await bakeNpc(k);
 }

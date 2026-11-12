@@ -5,6 +5,7 @@ import { Terrain } from './terrain.js';
 import { Vegetation } from './vegetation.js';
 import { Collision } from './collision.js';
 import { buildCity, windowMat, flameMat } from './city.js';
+import { fountainUniforms } from './fountain.js';
 import { buildPOI, buildShop } from './pois.js';
 import { CITIES, SECRET_SHOPS, POIS, BIOMES } from '../data/world.js';
 import { FX } from '../fx/particles.js';
@@ -31,6 +32,7 @@ export class World {
     this.setupSky();
     onProgress('Возведение городов…', 0.35); await tick();
     this.cities = [];
+    this.cityTrees = [];
     this.animated = [];
     const root = new THREE.Group();
     root.name = 'static';
@@ -39,6 +41,7 @@ export class World {
     for (const c of CITIES) {
       const built = buildCity(c, this.terrain, this.collision, root);
       this.cities.push(Object.assign({ def: c }, built));
+      this.cityTrees.push(...built.treeSpots);
       this.animated.push(...built.animated);
       await tick();
     }
@@ -46,7 +49,7 @@ export class World {
     for (const p of POIS) buildPOI(p, this.terrain, this.collision, root, this.animated);
     this.shops = SECRET_SHOPS.map(s => Object.assign({ def: s }, { npcPos: buildShop(s, this.terrain, this.collision, root, this.animated) }));
     onProgress('Выращивание лесов…', 0.65); await tick();
-    this.veg = new Vegetation(scene, this.terrain, this.collision);
+    this.veg = new Vegetation(scene, this.terrain, this.collision, this.cityTrees);
     this.applyQuality(this.quality);
     // кольца телепортов
     this.tpRings = [];
@@ -189,6 +192,13 @@ export class World {
     wu.uZenith.value.set(day > 0.3 ? '#3a78c8' : '#0a1430').lerp(new THREE.Color('#e89a6a'), dusk * 0.4);
     wu.uLight.value = lerp(0.25, 1.0, day);
     windowMat.emissiveIntensity = lerp(2.4, 0.25, day);
+    // освещение воды фонтанов
+    fountainUniforms.uTime.value = this.time;
+    fountainUniforms.uLight.value = wu.uLight.value;
+    fountainUniforms.uSunDir.value.copy(lightDir);
+    fountainUniforms.uSunColor.value.copy(wu.uSunColor.value);
+    fountainUniforms.uZenith.value.copy(wu.uZenith.value);
+    fountainUniforms.uHorizon.value.copy(wu.uHorizon.value);
     // карта окружения для отражений
     // карта отражений неба: только при заметном сдвиге солнца (днём), не чаще раза в 45 с
     const envDue = this.lastEnv < -100 || (this.time - this.lastEnv > 45 && elev > -0.12 && (!this.lastEnvSun || this.lastEnvSun.angleTo(this.sunDir) > 0.06));
@@ -226,10 +236,16 @@ export class World {
           break;
         }
         case 'fountain':
-          for (let i = 0; i < 4; i++) {
-            const ang = r() * Math.PI * 2;
-            FX.emit({ x: a.x, y: a.y, z: a.z, vx: Math.cos(ang) * 1.6, vz: Math.sin(ang) * 1.6, vy: 2.5 + r(), gravity: 9, life: 0.9, size: 0.18, color: '#cfe8ff', alpha: 0.7, drag: 1 });
+          // брызги и водяная пыль там, где струи падают в воду
+          if (d < 60) for (const e of a.emit) {
+            if (r() > e.p * 0.7) continue;
+            const ang = r() * Math.PI * 2, sp = e.up ? 0.5 : 0.9;
+            FX.emit({ x: e.x, y: e.y, z: e.z, vx: Math.cos(ang) * sp * r(), vz: Math.sin(ang) * sp * r(), vy: (e.up || 1.3) + r() * 0.9, gravity: 9, life: 0.45 + r() * 0.25, size: 0.1 + r() * 0.08, color: '#e4f2ff', alpha: 0.75, drag: 1 });
+            if (r() < 0.12) FX.emit({ x: e.x, y: e.y + 0.1, z: e.z, vy: 0.35, life: 1.1, size: 0.9, color: '#d8ecff', additive: false, alpha: 0.12, grow: 1.2 });
           }
+          break;
+        case 'smoke':
+          if (r() < 0.07) FX.emit({ x: a.x + (r() - 0.5) * 0.2, y: a.y, z: a.z + (r() - 0.5) * 0.2, vy: 0.9 + r() * 0.5, vx: 0.25 + (r() - 0.5) * 0.2, vz: (r() - 0.5) * 0.2, life: 3.2, size: 0.9, color: '#8a8580', additive: false, alpha: 0.22, grow: 1.6 });
           break;
         case 'teleport':
           if (r() < 0.6) { const ang = r() * Math.PI * 2; FX.emit({ x: a.x + Math.cos(ang) * 1.5, y: a.y - 2, z: a.z + Math.sin(ang) * 1.5, vy: 1.5 + r(), life: 1.6, size: 0.3, color: r() < 0.5 ? '#80e0ff' : '#ffffff' }); }
