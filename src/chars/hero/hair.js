@@ -129,7 +129,7 @@ export function hairPieces(kit, spec) {
       d = smax(d, (md - 0.01) * hk, 0.003 * hk);
       // усы
       for (const sx of [-1, 1]) {
-        const mu = big ? capsule(lx, ly, lz, [sx * 0.004, -0.0525, 0.0995], [sx * 0.036, -0.08, 0.087], 0.0075, 0.0055) : capsule(lx, ly, lz, [sx * 0.005, -0.053, 0.0985], [sx * 0.022, -0.06, 0.0935], 0.0034, 0.0022);
+        const mu = big ? capsule(lx, ly, lz, [sx * 0.004, -0.0525, 0.0995], [sx * 0.036, -0.08, 0.087], 0.0075, 0.0055) : capsule(lx, ly, lz, [sx * 0.005, -0.053, 0.1015], [sx * 0.022, -0.061, 0.0965], 0.0034, 0.0022);
         d = smin(d, mu * hk, 0.004 * hk);
       }
       if (!big) {
