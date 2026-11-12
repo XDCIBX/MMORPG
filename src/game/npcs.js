@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { Humanoid } from '../chars/humanoid.js';
 import { equipVisual, animateGear } from '../chars/gear.js';
 import { shadowLOD } from '../chars/optimize.js';
+import { HeroModel, loadHero, heroReady, getHero } from '../chars/hero/model.js';
+import { IS_TOUCH } from '../core/device.js';
 import { optimizeModel } from '../chars/creatures.js';
 import { NPCS } from '../data/quests.js';
 import { SECRET_SHOPS } from '../data/world.js';
@@ -24,15 +26,31 @@ function outfitItem(o, slot) {
   return { vis: Object.assign({ style: 0, trim: '#b08a3a' }, o), slot };
 }
 
-export function makeNpcModel(look, outfit = {}, weapon = null) {
-  const h = new Humanoid(JSON.parse(JSON.stringify(look)));
-  for (const [slot, o] of Object.entries(outfit || {})) equipVisual(h, slot, outfitItem(o, slot));
-  if (weapon) {
-    const t = 2;
-    equipVisual(h, 'weapon', { wtype: weapon, vis: { tier: t, c1: weapon === 'staff' ? '#5a3a22' : '#b0b4ba', trim: '#b08a3a', gem: weapon === 'staff' ? '#80c0ff' : null } });
-  }
-  h.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
-  optimizeModel(h);
+// какая детальная модель подходит NPC (на телефонах остаются облегчённые)
+function npcModelKey(look) {
+  if (IS_TOUCH) return null;
+  if (look.headType && look.headType !== 'human') return null;
+  if ((look.legLen || 1) < 0.8) return look.female ? null : 'npc_dwarf';
+  return look.female ? 'npc_f' : 'npc_m';
+}
+
+export function makeNpcModel(look, outfit = {}, weapon = null, extra = null) {
+  const build = (heroData) => {
+    const L = JSON.parse(JSON.stringify(look));
+    const h = heroData ? new HeroModel(L, heroData) : new Humanoid(L);
+    for (const [slot, o] of Object.entries(outfit || {})) equipVisual(h, slot, outfitItem(o, slot));
+    if (weapon) {
+      const t = 2;
+      equipVisual(h, 'weapon', { wtype: weapon, vis: { tier: t, c1: weapon === 'staff' ? '#5a3a22' : '#b0b4ba', trim: '#b08a3a', gem: weapon === 'staff' ? '#80c0ff' : null } });
+    }
+    if (extra) extra(h);
+    h.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    if (!heroData) optimizeModel(h);
+    return h;
+  };
+  const h = build(null);
+  const key = npcModelKey(look);
+  if (key) { h.upgrade = { key, build }; loadHero(key).catch(() => {}); }
   return h;
 }
 
@@ -71,6 +89,19 @@ export class NPC {
     const visible = d < 85;
     this.model.root.visible = visible;
     if (!visible) return;
+    // подмена на детальную модель, когда она загрузилась (не больше одной за кадр)
+    const up = this.model.upgrade;
+    if (up && d < 60 && this.game.quality >= 1 && heroReady(up.key) && this.game._npcUpT !== this.game.time) {
+      this.game._npcUpT = this.game.time;
+      const old = this.model;
+      try {
+        const m = up.build(getHero(up.key));
+        m.root.position.copy(old.root.position); m.root.rotation.y = this.yaw;
+        this.game.scene.add(m.root);
+        old.root.removeFromParent();
+        this.model = m;
+      } catch (e) { console.warn('npc model', e); old.upgrade = null; }
+    }
     shadowLOD(this.model.root, d < 24);
     if (d > 90) return;
     let speed = 0;
@@ -142,8 +173,7 @@ export function createNPCs(game) {
         const dwarfish = style === 'stone';
         const look = dwarfish ? { skin: pick(SKINS), scale: 0.86, legLen: 0.72, torsoW: 1.3, torsoD: 1.2, limb: 1.3, head: 1.15, neckLen: 0.5, hair: { style: 'braids', color: pick(HAIRS) }, beard: 'dwarf' } : { skin: pick(SKINS), hair: { style: 'short', color: pick(HAIRS) }, beard: Math.random() < 0.5 ? 'short' : null };
         look.base = { shirt: '#4a4a4a', pants: '#3a3a3a', boots: '#2a2a2a' };
-        const m = makeNpcModel(look, outfit, dwarfish ? 'axe' : 'sword');
-        equipVisual(m, 'offhand', { otype: 'shield', vis: { kind: 'heavy', tier: 3, c1, c2: city.def.banner, trim: '#c9a640', style: 1 } });
+        const m = makeNpcModel(look, outfit, dwarfish ? 'axe' : 'sword', (mm) => equipVisual(mm, 'offhand', { otype: 'shield', vis: { kind: 'heavy', tier: 3, c1, c2: city.def.banner, trim: '#c9a640', style: 1 } }));
         list.push(new NPC(game, { id: 'guard', name: 'Стражник', role: 'guard', cityId: cid, x: sp.x, z: sp.z, yaw: sp.yaw, model: m }));
       } else if (sp.role === 'citizen' || sp.role === 'vendorExtra') {
         const female = Math.random() < 0.5;

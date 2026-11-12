@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { Player } from './player.js';
 import { MobManager, AllyManager } from './mobs.js';
 import { createNPCs } from './npcs.js';
+import { Physics } from './physics.js';
 import { QuestLog } from './quests.js';
 import { Combat } from './combat.js';
 import { Effects } from '../fx/effects.js';
@@ -55,6 +56,13 @@ export class Game {
     this.mobs = new MobManager(this);
     this.allies = new AllyManager(this);
     this.npcs = createNPCs(this);
+    // предметы с физикой: бочки, ящики, тыквы в городах и лагерях
+    this.physics = new Physics(this);
+    for (const c of this.world.cities) for (const p of c.props || []) this.physics.add(p.kind, p.x, p.z);
+    for (const [px, pz] of [[-580, 540], [300, -60]]) for (let i = 0; i < 5; i++) {
+      const a = i * 1.3, r = 7 + (i % 3) * 3;
+      this.physics.add(i % 2 ? 'crate' : 'barrel', px + Math.cos(a) * r, pz + Math.sin(a) * r);
+    }
     this.ui.init();
     this.world.veg.prebuildGrass(this.player.pos);
     this.respawnCity = saved ? saved.respawnCity || 'c1' : 'c1';
@@ -323,6 +331,7 @@ export class Game {
     const P = this.player;
     if (this.started) this.handleKeys();
     P.update(dt);
+    this.physics.update(dt);
     this.mobs.update(dt);
     this.allies.update(dt);
     for (const n of this.npcs) n.update(dt, P.pos);

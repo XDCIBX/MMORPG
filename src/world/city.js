@@ -736,7 +736,7 @@ function cart(B, M, x, y, z, yaw, load) {
   for (const sz of [-1, 1]) { wheel(put, M, 0.75, 0.6, sz * 0.9, 0.6); wheel(put, M, -0.85, 0.6, sz * 0.9, 0.6); }
   for (const sz of [-1, 1]) put(boxUV(1.9, 0.08, 0.08, 1), M.darkWood, M4(2.4, 0.72, sz * 0.45, 0, 1, 1, 1, 0, -0.16));
   if (load === 'hay') {
-    const hay = flatMat('#c8a84a', 1);
+    const hay = flatMat('#a8904a', 1);
     put(new THREE.SphereGeometry(1, 12, 8), hay, M4(0, 1.45, 0, 0, 1.35, 0.6, 0.72));
     put(new THREE.SphereGeometry(0.6, 10, 7), hay, M4(0.5, 1.8, 0.1, 0, 1.2, 0.6, 0.9));
   } else {
@@ -747,7 +747,7 @@ function cart(B, M, x, y, z, yaw, load) {
   }
 }
 function hayBales(B, x, y, z, rnd) {
-  const hay = flatMat('#c8a84a', 1), band = flatMat('#7a5a2a', 1);
+  const hay = flatMat('#a8904a', 1), band = flatMat('#7a5a2a', 1);
   const n = 2 + Math.floor(rnd() * 2);
   for (let i = 0; i < n; i++) {
     const yw = rnd() * 3, px = x + (i - 1) * 0.95, top = i === 2;

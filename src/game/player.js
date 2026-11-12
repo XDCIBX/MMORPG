@@ -506,6 +506,7 @@ export class Player extends Entity {
   autoAttack(tgt) {
     const g = this.game;
     this.dismount();
+    if (g.physics && (this.C.melee || this.model.weaponType === 'scythe')) g.physics.blast(this.pos.x + Math.sin(this.yaw) * 1.3, this.pos.z + Math.cos(this.yaw) * 1.3, 1.0, 5);
     const wt = this.model.weaponType || 'none';
     let anim = WEAPON_ANIM[wt] || 'thrust';
     let finisher = false;

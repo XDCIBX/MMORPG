@@ -93,7 +93,7 @@ export class Physics {
     for (const b of this.bodies) {
       const dx = b.pos.x - x, dz = b.pos.z - z, d = Math.hypot(dx, dz);
       if (d > r + 0.6) continue;
-      const k = (1 - d / (r + 0.6)) * power / b.K.mass;
+      const k = Math.min(11, (1 - d / (r + 0.6)) * power / Math.max(0.75, b.K.mass));
       const nx = d > 0.05 ? dx / d : Math.random() - 0.5, nz = d > 0.05 ? dz / d : Math.random() - 0.5;
       b.vel.x += nx * k; b.vel.z += nz * k; b.vel.y += k * 0.55 + 1;
       b.ang.set((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 8);
@@ -125,7 +125,8 @@ export class Physics {
     const near = [];
     for (const b of this.bodies) {
       const d = Math.hypot(b.pos.x - P.pos.x, b.pos.z - P.pos.z);
-      b.mesh.visible = d < 120;
+      b.mesh.visible = d < 95;
+      b.mesh.castShadow = d < 40;
       if (d < 70) near.push(b);
       // толчок игроком
       if (d < pr + b.K.r && Math.abs(P.pos.y + P.jumpOffset - (b.pos.y - b.K.rest)) < 1.3) {
@@ -200,7 +201,7 @@ export class Physics {
         if (rolling ? steep > 0.04 : steep > 0.45) { const k = G * (rolling ? 0.55 : 0.4) * dt; b.vel.x -= sx * k; b.vel.z -= sz * k; }
         // трение
         const fr = rolling ? (K.ball ? K.fr : 1.1) : K.fr;
-        const dec = Math.max(0, 1 - fr * dt) - (sp < 0.5 ? dt * 0.8 : 0);
+        const dec = Math.max(0, 1 - fr * dt) - (sp < 0.9 && steep < 0.18 ? dt * 1.6 : 0);
         b.vel.x *= Math.max(0, dec); b.vel.z *= Math.max(0, dec);
         if (K.cyl) {
           if (b.tipped) {

@@ -5,6 +5,12 @@ import { WEAPON_ANIM } from '../chars/gear.js';
 import { boneMat } from '../chars/materials.js';
 import { fireMat, energyMat } from '../fx/effects.js';
 
+// Умения по области заодно раскидывают предметы с физикой
+function hitArea(game, x, z, r) {
+  if (game.physics) game.physics.blast(x, z, r, 8);
+  return game.combat.enemiesInRadius('player', x, z, r);
+}
+
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
 // ---------- Библиотека эффектов попадания ----------
@@ -386,7 +392,7 @@ export function castSkill(game, P, skill, target) {
         const speed = skill.projectile === 'fireball' ? 26 : skill.projectile === 'hammer' ? 30 : 42;
         E.projectile(skill.projectile, from, tgtCenter(target), speed, (hp) => {
           apply(target, skill.dmg);
-          if (skill.splash) for (const e of game.combat.enemiesInRadius('player', hp.x, hp.z, skill.splash)) if (e !== target) apply(e, skill.dmg * 0.6);
+          if (skill.splash) for (const e of hitArea(game, hp.x, hp.z, skill.splash)) if (e !== target) apply(e, skill.dmg * 0.6);
           hitFx(game, skill.fx, hp, { to: () => P.center(), size: skill.splash ? 1.5 : 1 });
         });
       });
@@ -416,7 +422,7 @@ export function castSkill(game, P, skill, target) {
     case 'aoeSelf': {
       game.schedule(skill.anim === 'slam' ? 0.45 / P.hasteMul : 0.3 / P.hasteMul, () => {
         areaFx(game, skill.fx, P.pos, skill.radius, skill.color);
-        for (const e of game.combat.enemiesInRadius('player', P.pos.x, P.pos.z, skill.radius)) {
+        for (const e of hitArea(game, P.pos.x, P.pos.z, skill.radius)) {
           apply(e, skill.dmg); hitFx(game, 'slash', e.center());
           if (skill.fx === 'harvest') { const c = e.center(); for (let k = 0; k < 10; k++) game.schedule(0.2 + k * 0.04, () => { const to = P.center(); const f = c.clone().lerp(to, k / 10); FX.emit({ x: f.x, y: f.y + Math.sin(k) * 0.3, z: f.z, vx: (to.x - c.x) * 0.8, vy: 0.5, vz: (to.z - c.z) * 0.8, life: 0.5, size: 0.45, color: '#7af8ff' }); }); }
         }
@@ -430,12 +436,12 @@ export function castSkill(game, P, skill, target) {
         areaFx(game, 'meteor', p, skill.radius);
         game.schedule(0.2, () => E.meteor(p.clone().setY(game.world.standY(p.x, p.z)), '#ff5020', () => {
           game.shake(0.6);
-          for (const e of game.combat.enemiesInRadius('player', p.x, p.z, skill.radius)) apply(e, skill.dmg);
+          for (const e of hitArea(game, p.x, p.z, skill.radius)) apply(e, skill.dmg);
         }));
       } else {
         game.schedule(0.15, () => areaFx(game, skill.fx, p.clone().setY(game.world.standY(p.x, p.z)), skill.radius, skill.color));
         game.schedule(delay + 0.15, () => {
-          for (const e of game.combat.enemiesInRadius('player', p.x, p.z, skill.radius)) { apply(e, skill.dmg); hitFx(game, 'default', e.center(), { color: skill.color }); }
+          for (const e of hitArea(game, p.x, p.z, skill.radius)) { apply(e, skill.dmg); hitFx(game, 'default', e.center(), { color: skill.color }); }
         });
       }
       break;
@@ -448,7 +454,7 @@ export function castSkill(game, P, skill, target) {
           const c = p || P.pos.clone();
           c.y = game.world.standY(c.x, c.z);
           areaFx(game, skill.fx, c, skill.radius, skill.color);
-          for (const e of game.combat.enemiesInRadius('player', c.x, c.z, skill.radius)) {
+          for (const e of hitArea(game, c.x, c.z, skill.radius)) {
             apply(e, skill.dmg / waves, { noCrit: w > 0 });
             if (skill.type === 'pull' && e.canMove && !e.isBoss) {
               const dx = c.x - e.pos.x, dz = c.z - e.pos.z, d = Math.hypot(dx, dz);
@@ -535,7 +541,7 @@ export function castSkill(game, P, skill, target) {
           }, () => P.model.root.scale.setScalar(base));
           game.shake(0.4);
         }
-        if (skill.taunt) for (const e of game.combat.enemiesInRadius('player', P.pos.x, P.pos.z, skill.taunt)) { e.aggro(P, true); }
+        if (skill.taunt) for (const e of hitArea(game, P.pos.x, P.pos.z, skill.taunt)) { e.aggro(P, true); }
         P.recalc();
       });
       break;

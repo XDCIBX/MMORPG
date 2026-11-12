@@ -126,12 +126,19 @@ export class HeroModel extends Humanoid {
     this.bodyMesh = this.addPiece(body, this.regionNames.map(() => this.skinMaterial));
     // волосы и борода
     this.hairMeshes = [];
+    // в моделях NPC запечено несколько причёсок и бород («hair:long», «beard:short») — берём нужные
+    const avail = { hair: [], beard: [] };
+    for (const p of data.pieces) if (p.meta.slot === 'hair' && p.meta.name.includes(':')) { const [k, st] = p.meta.name.split(':'); avail[k].push(st); }
+    const choose = (k, want) => (!want || want === 'none') ? null : (avail[k].includes(want) ? want : avail[k][0] || null);
+    const wantHair = choose('hair', s.hair && s.hair.style), wantBeard = choose('beard', s.beard);
     for (const p of data.pieces) {
       if (p.meta.slot !== 'hair') continue;
+      const [kind, st] = p.meta.name.split(':');
+      if (st && st !== (kind === 'beard' ? wantBeard : wantHair)) continue;
       const hm = heroMat('hair', s.hair && s.hair.color || '#3a2a1a', { center: H.hairCenter });
       const m = this.addPiece(p, p.meta.mats.map(mn => mn === 'T' ? heroMat('metal', '#d4a83a', { rough: 0.25 }) : hm));
       this.hairMeshes.push(m);
-      m.userData.isBeard = p.meta.name === 'beard';
+      m.userData.isBeard = kind === 'beard';
     }
     // глаза (двигаются) и веки для моргания
     this.eyeMeshes = []; this.blinkLids = [];
