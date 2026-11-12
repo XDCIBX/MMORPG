@@ -190,7 +190,10 @@ export class World {
     wu.uLight.value = lerp(0.25, 1.0, day);
     windowMat.emissiveIntensity = lerp(2.4, 0.25, day);
     // карта окружения для отражений
-    if (this.time - this.lastEnv > 20) {
+    // карта отражений неба: только при заметном сдвиге солнца (днём), не чаще раза в 45 с
+    const envDue = this.lastEnv < -100 || (this.time - this.lastEnv > 45 && elev > -0.12 && (!this.lastEnvSun || this.lastEnvSun.angleTo(this.sunDir) > 0.06));
+    if (envDue) {
+      this.lastEnvSun = this.sunDir.clone();
       this.lastEnv = this.time;
       const u = this.envSky.material.uniforms, su = this.sky.material.uniforms;
       for (const k of ['turbidity', 'rayleigh', 'mieCoefficient', 'mieDirectionalG']) u[k].value = su[k].value;
@@ -198,8 +201,8 @@ export class World {
       if (this.envRT) this.envRT.dispose();
       this.envRT = this.pmrem.fromScene(this.envScene, 0.02);
       this.scene.environment = this.envRT.texture;
-      this.scene.environmentIntensity = lerp(0.12, 0.35, day);
     }
+    this.scene.environmentIntensity = lerp(0.12, 0.35, day);
     this.isNight = day < 0.3;
   }
 

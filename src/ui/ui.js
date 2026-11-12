@@ -897,13 +897,13 @@ export class UI {
     </div>
     <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn small" id="h-save">💾 Сохранить</button>
-      <button class="btn small" id="h-q">Графика: ${g.quality >= 1 ? 'Высокая' : 'Средняя'}</button>
+      <button class="btn small" id="h-q">Графика: ${g.quality >= 1.2 ? 'Ультра' : g.quality >= 1 ? 'Высокая' : 'Средняя'}</button>
       <button class="btn small" id="h-snd">Звук: ${this.muted ? 'выкл' : 'вкл'}</button>
       <button class="btn small danger" id="h-del">Удалить героя</button>
     </div>
     <div style="margin-top:12px;color:var(--muted);font-size:13px">Прогресс сохраняется автоматически в браузере. Время в игре: ${String(Math.floor(g.world.hours)).padStart(2, '0')}:${String(Math.floor((g.world.hours % 1) * 60)).padStart(2, '0')}</div>`;
     $('h-save').onclick = () => { g.save(); this.notify('Игра сохранена', '#7aff7a'); };
-    $('h-q').onclick = () => { g.setQuality(g.quality >= 1 ? 0.6 : 1); this.openHelp(); };
+    $('h-q').onclick = () => { g.setQuality(g.quality >= 1.2 ? 0.6 : g.quality >= 1 ? 1.2 : 1); this.openHelp(); };
     $('h-snd').onclick = () => { this.muted = !this.muted; this.openHelp(); };
     $('h-del').onclick = () => {
       const b = $('h-del');

@@ -8,6 +8,7 @@ import { FX } from '../fx/particles.js';
 import { scaleTex, furTex, stoneWall } from '../core/textures.js';
 import { Creature } from './creature_base.js';
 import { horseFromDef } from './horse.js';
+import { mergeToJoints } from './optimize.js';
 import { Beast } from './beasts.js';
 
 const cmats = new Map();
@@ -432,8 +433,37 @@ export function buildCreature(def, opts = {}) {
     }
     default: c = humanoidMob(def, opts);
   }
+  optimizeModel(c);
   return c;
 }
 
 export { humanoidMob };
 void clothMat;
+
+// Склеить неподвижные детали модели (гуманоиды и звери), не трогая анимируемые части
+export function optimizeModel(c) {
+  if (!c || !c.root || c.isHero) return c;
+  const isHum = !!(c.j && c.joint);
+  const isBeast = c.kind === 'wolf' || c.kind === 'bear' || c.kind === 'boar';
+  if (!isHum && !isBeast) return c;
+  const skip = new Set();
+  if (c.lids) for (const l of c.lids) skip.add(l);
+  if (c.attachments) for (const sl of ['weapon', 'offhand']) for (const o of c.attachments[sl] || []) skip.add(o);
+  if (c.robe) skip.add(c.robe);
+  const anim = new Set([c.root, c.body]);
+  if (isHum) {
+    for (const k in c.j) anim.add(c.j[k]);
+    if (c.cape) anim.add(c.cape);
+  } else {
+    for (const o of [c.torso, c.head, c.jaw, ...(c.neckSeg || []), ...(c.tailSeg || [])]) if (o) anim.add(o);
+    for (const L of c.legs || []) for (const o of [L.top, L.mid, L.low, L.foot]) if (o) anim.add(o);
+  }
+  // всё, что вращается само (кольца, кристаллы, плащ и т.п.), имеет имя и не трогается
+  mergeToJoints(c.root, anim, skip);
+  if (isBeast && c.shells) {
+    c.shells = [];
+    c.root.traverse(o => { if (o.isMesh && o.userData.shell) c.shells.push(o); });
+    for (const sm of c.shells) sm.visible = c.furOn !== false;
+  }
+  return c;
+}

@@ -1,4 +1,5 @@
 // Монстры, боссы и призванные союзники: ИИ, способности, добыча, появление.
+import { shadowLOD } from '../chars/optimize.js';
 import * as THREE from 'three';
 import { Entity } from './entity.js';
 import { buildCreature } from '../chars/creatures.js';
@@ -103,6 +104,7 @@ export class Mob extends Entity {
 
   update(dt) {
     const g = this.game;
+    if (this.model && g.player) shadowLOD(this.model.root, Math.hypot(g.player.pos.x - this.pos.x, g.player.pos.z - this.pos.z) < 40 * Math.max(1, this.scale || 1));
     if (!this.alive) {
       this.deathT += dt;
       if (this.model) {

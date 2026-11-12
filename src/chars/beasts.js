@@ -257,7 +257,7 @@ export class Beast extends Creature {
         const sm = new THREE.Mesh(m.geometry, shellMat(m.material.userData.fur, i / n, len, rep.x.toFixed(0) + ',' + rep.y.toFixed(0)));
         sm.material.onBeforeCompile && null;
         sm.position.copy(m.position); sm.rotation.copy(m.rotation); sm.scale.copy(m.scale);
-        sm.castShadow = false; sm.receiveShadow = true;
+        sm.castShadow = false; sm.receiveShadow = true; sm.userData.shell = true;
         m.parent.add(sm);
         this.shells.push(sm);
         sm.userData.rep = rep;

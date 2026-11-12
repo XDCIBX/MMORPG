@@ -2,6 +2,8 @@
 import * as THREE from 'three';
 import { Humanoid } from '../chars/humanoid.js';
 import { equipVisual, animateGear } from '../chars/gear.js';
+import { shadowLOD } from '../chars/optimize.js';
+import { optimizeModel } from '../chars/creatures.js';
 import { NPCS } from '../data/quests.js';
 import { SECRET_SHOPS } from '../data/world.js';
 import { pick, rand, angleLerp } from '../core/util.js';
@@ -30,6 +32,7 @@ export function makeNpcModel(look, outfit = {}, weapon = null) {
     equipVisual(h, 'weapon', { wtype: weapon, vis: { tier: t, c1: weapon === 'staff' ? '#5a3a22' : '#b0b4ba', trim: '#b08a3a', gem: weapon === 'staff' ? '#80c0ff' : null } });
   }
   h.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  optimizeModel(h);
   return h;
 }
 
@@ -65,9 +68,10 @@ export class NPC {
   headY() { return this.pos.y + this.model.headTop(); }
   update(dt, playerPos) {
     const d = Math.hypot(playerPos.x - this.pos.x, playerPos.z - this.pos.z);
-    const visible = d < 150;
+    const visible = d < 85;
     this.model.root.visible = visible;
     if (!visible) return;
+    shadowLOD(this.model.root, d < 24);
     if (d > 90) return;
     let speed = 0;
     if (this.talkT > 0) {

@@ -58,9 +58,12 @@ class App {
       this.ao = new GTAOPass(this.scene, this.camera, window.innerWidth, window.innerHeight);
       this.ao.output = GTAOPass.OUTPUT.Default;
       this.ao.blendIntensity = 0.85;
-      this.ao.updateGtaoMaterial({ radius: 0.9, distanceExponent: 1.5, thickness: 1.2, scale: 1.0, samples: 12 });
-      this.ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
-      this.ao.enabled = this.quality >= 1;
+      this.ao.updateGtaoMaterial({ radius: 0.9, distanceExponent: 1.5, thickness: 1.2, scale: 1.0, samples: 10 });
+      this.ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 5, rings: 2, samples: 8 });
+      this.ao.enabled = this.quality >= 1.2;
+      // затенение считается в половинном разрешении — в 4 раза дешевле, на глаз не отличить
+      const aoSet = this.ao.setSize.bind(this.ao);
+      this.ao.setSize = (w, h) => aoSet(Math.max(1, Math.round(w * 0.5)), Math.max(1, Math.round(h * 0.5)));
       this.composer.addPass(this.ao);
     }
     // защита от «битых» пикселей (NaN/бесконечность) и пересветов: иначе свечение
@@ -118,20 +121,42 @@ class App {
     this.mode = 'loading';
   }
 
+  // Автоподстройка разрешения: при просадке FPS рендер становится чуть мельче,
+  // при запасе — возвращается к исходному
+  adaptResolution(raw) {
+    if (raw > 0.25) return; // пауза/сворачивание вкладки
+    const R = this.dyn || (this.dyn = { ema: 1 / 60, low: 0, high: 0, scale: 1, lock: 0 });
+    R.ema += (raw - R.ema) * 0.05;
+    R.lock = Math.max(0, R.lock - raw);
+    if (R.ema > 1 / 48) { R.low += raw; R.high = 0; } else if (R.ema < 1 / 57) { R.high += raw; R.low = 0; } else { R.low = 0; R.high = 0; }
+    let ns = R.scale;
+    if (R.low > 1.5 && R.scale > 0.6) { ns = R.scale - 0.1; R.low = 0; R.lock = 10; }
+    else if (R.high > 8 && R.scale < 1 && R.lock <= 0) { ns = R.scale + 0.1; R.high = 0; R.lock = 20; }
+    if (ns !== R.scale) {
+      R.scale = Math.round(ns * 10) / 10;
+      const pr = this.pixelRatioFor(this.quality) * R.scale;
+      this.renderer.setPixelRatio(pr);
+      this.composer.setPixelRatio(pr);
+      this.resize();
+    }
+  }
+
   pixelRatioFor(q) {
     const dpr = window.devicePixelRatio || 1;
-    if (q >= 1) return Math.min(dpr, 1.5);
+    if (q >= 1.2) return Math.min(dpr, 1.5);
+    if (q >= 1) return Math.min(dpr, 1.25);
     if (q >= 0.6) return Math.min(dpr, IS_TOUCH ? 1.5 : 1);
     return Math.min(dpr, IS_TOUCH ? 1.25 : 1);
   }
 
   setQuality(q) {
     this.quality = q;
+    if (this.dyn) this.dyn.scale = 1;
     try { localStorage.setItem('three_crowns_quality', q); } catch (e) { /* */ }
     this.renderer.setPixelRatio(this.pixelRatioFor(q));
     this.composer.setPixelRatio(this.renderer.getPixelRatio());
     this.bloom.enabled = q >= 0.6;
-    if (this.ao) this.ao.enabled = q >= 1;
+    if (this.ao) this.ao.enabled = q >= 1.2;
     if (this.world) this.world.applyQuality(q);
     this.resize();
   }
@@ -316,12 +341,19 @@ class App {
     this.game = new Game(this);
     this.game.start(data, save);
     this.resize();
+    try {
+      const moon = this.world.moon, mv = moon.visible;
+      moon.visible = true;
+      this.renderer.compile(this.scene, this.camera);
+      moon.visible = mv;
+    } catch (e) { /* */ }
     window.addEventListener('beforeunload', () => this.game.save());
   }
 
   loop() {
     requestAnimationFrame(() => this.loop());
-    const dt = Math.min(0.05, this.clock.getDelta());
+    const raw = this.clock.getDelta();
+    const dt = Math.min(0.05, raw);
     const t = this.clock.elapsedTime;
     if (this.mode === 'menu') {
       const c = CITIES[0];
@@ -344,8 +376,9 @@ class App {
       this.renderPass.scene = this.menuScene; this.renderPass.camera = this.menuCam;
       if (this.ao) this.ao.enabled = false;
     } else if (this.mode === 'game' && this.game) {
-      if (this.ao) this.ao.enabled = this.quality >= 1;
+      if (this.ao) this.ao.enabled = this.quality >= 1.2;
       this.game.update(dt);
+      this.adaptResolution(raw);
     }
     this.input.endFrame();
     if (this.mode !== 'loading') this.composer.render();
