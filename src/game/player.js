@@ -434,7 +434,7 @@ export class Player extends Entity {
       FX.emit({ x: this.pos.x + Math.cos(a) * 0.5, y: this.pos.y + 0.2 + Math.random() * 1.5, z: this.pos.z + Math.sin(a) * 0.5, vy: 0.6, life: 1.2, size: 0.18, color: col, alpha: 0.8 });
     }
     // призыв скакуна
-    if (this.mountCast) {
+    if (this.mountCast > 0) {
       this.mountCast -= dt;
       if (speed > 0 || this.engaged && g.target && g.target.alive) { this.mountCast = 0; g.ui.error('Призыв прерван'); }
       else if (this.mountCast <= 0) this.mountUp();
@@ -482,6 +482,8 @@ export class Player extends Entity {
   }
   mountUp() {
     const g = this.game;
+    this.mountCast = 0;
+    if (this.mount) { this.mount.root.removeFromParent(); this.mount = null; }
     this.mount = buildMount(this.cls);
     g.scene.add(this.mount.root);
     this.mounted = true;

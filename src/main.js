@@ -41,7 +41,7 @@ class App {
     r.outputColorSpace = THREE.SRGBColorSpace;
     setMaxAnisotropy(Math.min(8, r.capabilities.getMaxAnisotropy()));
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 4200);
+    this.camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.25, 4200);
     this.input = new Input(this.canvas);
     this.input.onClick = (x, y, b) => { if (this.game && this.game.started) this.game.onClick(x, y, b); };
     // постобработка
@@ -63,6 +63,30 @@ class App {
       this.ao.enabled = this.quality >= 1;
       this.composer.addPass(this.ao);
     }
+    // защита от «битых» пикселей (NaN/бесконечность) и пересветов: иначе свечение
+    // раздувает их в мигающие квадраты на земле и горах
+    this.sanitize = new ShaderPass({
+      uniforms: { tDiffuse: { value: null } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+        bool ok(vec4 c) { return c.r == c.r && c.g == c.g && c.b == c.b && max(c.r, max(c.g, c.b)) < 6.0e4; }
+        void main(){
+          vec2 px = vec2(abs(dFdx(vUv.x)), abs(dFdy(vUv.y)));
+          vec4 c = texture2D(tDiffuse, vUv);
+          vec4 a = texture2D(tDiffuse, vUv + vec2(px.x, 0.0)), b = texture2D(tDiffuse, vUv - vec2(px.x, 0.0));
+          vec4 d = texture2D(tDiffuse, vUv + vec2(0.0, px.y)), e = texture2D(tDiffuse, vUv - vec2(0.0, px.y));
+          a = ok(a) ? a : vec4(0.0); b = ok(b) ? b : vec4(0.0); d = ok(d) ? d : vec4(0.0); e = ok(e) ? e : vec4(0.0);
+          if (!ok(c)) c = (a + b + d + e) * 0.25;
+          // одиночный пересвеченный пиксель (блик) не даёт мигающих квадратов в свечении
+          float lc = max(c.r, max(c.g, c.b));
+          float ln = max(max(max(a.r, a.g), max(b.r, b.g)), max(max(d.r, d.g), max(e.r, e.g)));
+          ln = max(ln, max(max(a.b, b.b), max(d.b, e.b)));
+          float lim = max(1.2, ln * 2.0);
+          if (lc > lim) c.rgb *= lim / lc;
+          gl_FragColor = vec4(clamp(c.rgb, 0.0, 16.0), c.a);
+        }`,
+    });
+    this.composer.addPass(this.sanitize);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
     // цветокоррекция и виньетка (после тонмаппинга)

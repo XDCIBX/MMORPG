@@ -1093,6 +1093,7 @@ export function buildMount(cls) {
   });
   h.root.scale.setScalar(M.scale);
   h.mountName = M.name;
+  h.root.userData.isMountRoot = true;
   h.seatY = h.seatLocal * M.scale;
   h.update(0.016, { speed: 0 });
   return h;

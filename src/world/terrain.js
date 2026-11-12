@@ -249,12 +249,16 @@ export class Terrain {
           float gTerrH;
           // рельеф по высоте (bump) без отдельной карты нормалей
           vec3 terrPerturb(vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDirection) {
-            vec3 vSigmaX = normalize(dFdx(surf_pos)); vec3 vSigmaY = normalize(dFdy(surf_pos));
+            vec3 sx = dFdx(surf_pos), sy = dFdy(surf_pos);
+            if (dot(sx, sx) < 1e-12 || dot(sy, sy) < 1e-12) return surf_norm;
+            vec3 vSigmaX = normalize(sx); vec3 vSigmaY = normalize(sy);
             vec3 vN = surf_norm;
             vec3 R1 = cross(vSigmaY, vN); vec3 R2 = cross(vN, vSigmaX);
             float fDet = dot(vSigmaX, R1) * faceDirection;
             vec3 vGrad = sign(fDet) * (dHdxy.x * R1 + dHdxy.y * R2);
-            return normalize(abs(fDet) * surf_norm - vGrad);
+            vec3 n = abs(fDet) * surf_norm - vGrad;
+            float l = length(n);
+            return l > 1e-6 ? n / l : surf_norm;
           }`)
         .replace('#include <color_fragment>', `#include <color_fragment>
           vec4 d1 = texture2D(tDetail, vWPos.xz * 0.09);
@@ -275,7 +279,7 @@ export class Terrain {
           {
             float fade = 1.0 - smoothstep(25.0, 90.0, length(vViewPosition));
             vec2 dH = vec2(dFdx(gTerrH), dFdy(gTerrH)) * (1.2 + vSplat.y * 2.0) * fade;
-            normal = terrPerturb(-vViewPosition, normal, dH, faceDirection);
+            if (fade > 0.001) normal = terrPerturb(-vViewPosition, normal, dH, faceDirection);
           }`)
         .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
           roughnessFactor = mix(0.95, 0.75, vSplat.y * gTerrH);`);
@@ -362,7 +366,7 @@ export class Terrain {
           vec3 R = reflect(-V, N);
           vec3 sky = mix(uHorizon, uZenith, clamp(R.y * 1.6, 0.0, 1.0));
           float sd = max(dot(R, normalize(uSunDir)), 0.0);
-          vec3 spec = uSunColor * (pow(sd, 900.0) * 6.0 + pow(sd, 90.0) * 0.35);
+          vec3 spec = min(uSunColor * (pow(sd, 600.0) * 1.4 + pow(sd, 80.0) * 0.25) * (1.0 - vSwamp * 0.75), vec3(1.6));
           vec3 shallow = mix(vec3(0.10, 0.42, 0.42), vec3(0.20, 0.24, 0.10), vSwamp);
           vec3 deep = mix(vec3(0.02, 0.10, 0.18), vec3(0.05, 0.07, 0.03), vSwamp);
           float dk = smoothstep(0.0, 5.0, vDepth);

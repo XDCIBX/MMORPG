@@ -162,15 +162,16 @@ export class HeroModel extends Humanoid {
     m.castShadow = true; m.receiveShadow = true;
     m.frustumCulled = false;
     this.body.add(m);
-    // привязка в позе запекания
-    const rots = {};
-    for (const n in BIND_POSE) { rots[n] = this.j[n].rotation.toArray(); this.j[n].rotation.set(...BIND_POSE[n]); }
+    // привязка в позе запекания: все суставы в покое (+ A-поза), корень без смещений
+    const saved = {};
+    for (const n of HERO_BONES) { const j = this.j[n]; saved[n] = [j.rotation.toArray(), j.position.toArray()]; j.rotation.set(...(BIND_POSE[n] || [0, 0, 0])); }
+    this.j.hips.position.y = this.hipY;
     const sc = this.root.scale.clone(), rp = this.root.position.clone(), rq = this.root.quaternion.clone(), bp = this.body.position.clone(), br = this.body.rotation.clone();
     this.root.scale.set(1, 1, 1); this.root.position.set(0, 0, 0); this.root.quaternion.identity(); this.body.position.set(0, 0, 0); this.body.rotation.set(0, 0, 0);
     this.root.updateMatrixWorld(true);
     m.bind(this.skeleton);
     this.root.scale.copy(sc); this.root.position.copy(rp); this.root.quaternion.copy(rq); this.body.position.copy(bp); this.body.rotation.copy(br);
-    for (const n in rots) this.j[n].rotation.set(rots[n][0], rots[n][1], rots[n][2]);
+    for (const n of HERO_BONES) { const j = this.j[n]; j.rotation.fromArray(saved[n][0]); j.position.fromArray(saved[n][1]); }
     this.root.updateMatrixWorld(true);
     this.meshes.push(m);
     return m;
