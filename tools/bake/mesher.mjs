@@ -123,11 +123,11 @@ export function gradient(sdf, x, y, z, e = 0.0008) {
 }
 
 // Упростить сетку, затем спроецировать вершины на поверхность и взять нормали из поля
-export async function simplifyAndFinish(sdf, mesh, targetTris, { error = 0.0015, log = null } = {}) {
+export async function simplifyAndFinish(sdf, mesh, targetTris, { error = 0.0015, log = null, lockBorder = false } = {}) {
   await MeshoptSimplifier.ready;
   let { position, index } = mesh;
   if (index.length / 3 > targetTris) {
-    const [ix] = MeshoptSimplifier.simplify(index, position, 3, targetTris * 3, error, ['ErrorAbsolute']);
+    const [ix] = MeshoptSimplifier.simplify(index, position, 3, targetTris * 3, error, lockBorder ? ['ErrorAbsolute', 'LockBorder'] : ['ErrorAbsolute']);
     index = ix;
   }
   // компактизация
@@ -162,4 +162,81 @@ export async function simplifyAndFinish(sdf, mesh, targetTris, { error = 0.0015,
   }
   if (log) log(`  упрощено: вершин ${pos.length / 3}, треугольников ${I.length / 3}`);
   return { position: pos, normal: nrm, index: I };
+}
+
+// Граничные контуры сетки (рёбра, принадлежащие одному треугольнику)
+function boundaryLoops(index) {
+  const cnt = new Map(), dir = new Map();
+  const key = (a, b) => a < b ? a * 4194304 + b : b * 4194304 + a;
+  for (let t = 0; t < index.length; t += 3) {
+    for (let e = 0; e < 3; e++) {
+      const a = index[t + e], b = index[t + (e + 1) % 3];
+      const k = key(a, b);
+      cnt.set(k, (cnt.get(k) || 0) + 1);
+      dir.set(k, [a, b]);
+    }
+  }
+  const next = new Map();
+  for (const [k, c] of cnt) if (c === 1) { const [a, b] = dir.get(k); next.set(a, b); }
+  const loops = [], seen = new Set();
+  for (const s of next.keys()) {
+    if (seen.has(s)) continue;
+    const loop = [];
+    let v = s;
+    while (v !== undefined && !seen.has(v)) { seen.add(v); loop.push(v); v = next.get(v); }
+    if (loop.length > 2) loops.push(loop);
+  }
+  return loops;
+}
+
+// Сшить две сетки по горизонтальному разрезу y≈yc «молнией» между контурами
+export function zipMeshes(A, B, yc, log = null) {
+  const pick = (M) => {
+    const loops = boundaryLoops(M.index);
+    let best = null, bs = -1e9;
+    for (const L of loops) {
+      let y = 0; for (const v of L) y += M.position[v * 3 + 1]; y /= L.length;
+      const sc = L.length - Math.abs(y - yc) * 5000;
+      if (sc > bs) { bs = sc; best = L; }
+    }
+    return best;
+  };
+  const la = pick(A), lb = pick(B);
+  const nA = A.position.length / 3;
+  const P = new Float32Array(A.position.length + B.position.length);
+  P.set(A.position); P.set(B.position, A.position.length);
+  const N = new Float32Array(P.length);
+  N.set(A.normal); N.set(B.normal, A.normal.length);
+  const I = [];
+  for (const v of A.index) I.push(v);
+  for (const v of B.index) I.push(v + nA);
+  if (la && lb) {
+    let cx = 0, cz = 0;
+    for (const v of la) { cx += A.position[v * 3]; cz += A.position[v * 3 + 2]; }
+    cx /= la.length; cz /= la.length;
+    const ord = (M, L, off) => {
+      const arr = L.map(v => ({ v: v + off, a: Math.atan2(M.position[v * 3 + 2] - cz, M.position[v * 3] - cx) }));
+      arr.sort((p, q) => p.a - q.a);
+      return arr;
+    };
+    const a = ord(A, la, 0), b = ord(B, lb, nA);
+    let i = 0, j = 0;
+    const tri = (p, q, r) => {
+      // наружу — от оси шеи
+      const ux = P[q * 3] - P[p * 3], uy = P[q * 3 + 1] - P[p * 3 + 1], uz = P[q * 3 + 2] - P[p * 3 + 2];
+      const vx = P[r * 3] - P[p * 3], vy = P[r * 3 + 1] - P[p * 3 + 1], vz = P[r * 3 + 2] - P[p * 3 + 2];
+      const nx = uy * vz - uz * vy, nz = ux * vy - uy * vx;
+      const ox = P[p * 3] - cx, oz = P[p * 3 + 2] - cz;
+      if (nx * ox + nz * oz >= 0) I.push(p, q, r); else I.push(p, r, q);
+    };
+    const na = a.length, nb = b.length;
+    while (i < na || j < nb) {
+      const ai = a[i % na], bj = b[j % nb], an = a[(i + 1) % na], bn = b[(j + 1) % nb];
+      const angA = i + 1 < na ? an.a : an.a + Math.PI * 2, angB = j + 1 < nb ? bn.a : bn.a + Math.PI * 2;
+      if (j >= nb || (i < na && angA <= angB)) { tri(ai.v, an.v, bj.v); i++; }
+      else { tri(ai.v, bj.v, bn.v); j++; }
+    }
+    if (log) log(`  сшивка: ${na} + ${nb} вершин по контуру`);
+  } else if (log) log('  сшивка: контур не найден!');
+  return { position: P, normal: N, index: new Uint32Array(I) };
 }

@@ -66,33 +66,66 @@ float beardMaskF(vec3 q) {
   float ax = abs(q.x);
   float line = mix(-0.068, -0.012, smoothstep(0.024, 0.068, ax));
   float md = max(max(q.y - line, 0.004 - q.z), -0.136 - q.y);
-  float mouth = length(vec2(q.x / 0.022, (q.y + 0.075) / 0.0105)) - 1.0;
+  float mouth = length(vec2(q.x / 0.0215, (q.y + 0.0668) / 0.0115)) - 1.0;
   return max(md, -mouth * 0.012);
 }
+float fhash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 vec3 facePaint(vec3 c) {
   vec3 q = (vRest - uFaceC) / uFaceK;
   if (length(q * vec3(1.0, 0.8, 1.0)) > 0.17 || q.y < -0.16) return c;
   float F = uFF.x;
-  // губы и линия рта
-  float dl = length(vec2(q.x / 0.021, (q.y + 0.074) / 0.0155));
-  if (q.z > 0.08) c = mix(c, uLip, (1.0 - smoothstep(0.85, 1.05, dl)) * mix(0.55, 0.85, F));
-  if (q.z > 0.09) c = mix(c, vec3(0.12, 0.05, 0.05), (1.0 - smoothstep(0.0011, 0.0022, abs(q.y + 0.074))) * (1.0 - smoothstep(0.017, 0.021, abs(q.x))) * 0.6);
+  vec3 skin = c;
+  // тон кожи: розовее нос, щёки, уши; светлее лоб
+  float nose = 1.0 - smoothstep(0.004, 0.022, length(vec2(q.x, (q.y + 0.036) * 0.8)));
+  c = mix(c, c * vec3(1.06, 0.88, 0.86), nose * step(0.09, q.z) * 0.45);
+  float ear = smoothstep(0.066, 0.078, abs(q.x)) * step(-0.05, q.y) * step(q.y, 0.03);
+  c = mix(c, c * vec3(1.05, 0.86, 0.84), ear * 0.5);
+  c = mix(c, c * vec3(1.03, 1.02, 1.0), smoothstep(0.02, 0.06, q.y) * step(0.05, q.z) * 0.4);
+  // губы
+  float dl = length(vec2(q.x / 0.0215, (q.y + 0.067) / 0.0125));
+  vec3 lip = mix(uLip, skin * vec3(0.95, 0.72, 0.72), 0.25);
+  if (q.z > 0.085) c = mix(c, lip, (1.0 - smoothstep(0.75, 1.02, dl)) * mix(0.5, 0.85, F));
+  if (q.z > 0.092) c = mix(c, vec3(0.16, 0.06, 0.06), (1.0 - smoothstep(0.0006, 0.0016, abs(q.y + 0.0668))) * (1.0 - smoothstep(0.019, 0.022, abs(q.x))) * 0.55);
+  // тень под носом
+  float subn = (1.0 - smoothstep(0.0, 0.006, length(vec2(abs(q.x) - 0.0065, (q.y + 0.046) * 1.6)))) * step(0.095, q.z);
+  c = mix(c, c * vec3(0.55, 0.45, 0.45), subn * 0.5);
+  // уголки рта
+  float crn = 1.0 - smoothstep(0.0, 0.0045, length(vec2(abs(q.x) - 0.0212, (q.y + 0.0675) * 1.3)));
+  if (q.z > 0.08) c = mix(c, c * vec3(0.62, 0.5, 0.5), crn * 0.45);
   vec3 hc = uBrow * 0.75;
   for (int i = 0; i < 2; i++) {
     float sx = i == 0 ? 1.0 : -1.0;
-    float dx = q.x - sx * 0.03;
-    // брови: дуга
-    float by = (q.y - 0.022 + dx * dx * 6.0) / mix(0.0048, 0.0032, F);
-    float db = length(vec2(dx / 0.022, by));
-    float brow = (1.0 - smoothstep(0.65, 1.05, db)) * step(0.07, q.z);
-    brow *= 0.9 + 0.1 * sin(q.x * 2600.0 + q.y * 1400.0);
-    c = mix(c, hc * 0.9, brow * 0.92);
-    // тени у глаз
-    float de = length(vec2((q.x - sx * 0.031) / 0.02, (q.y + 0.002) / 0.015));
-    if (q.z > 0.06) c = mix(c, c * vec3(0.72, 0.62, 0.62), (1.0 - smoothstep(0.6, 1.25, de)) * 0.4);
+    float ax = q.x * sx;
+    // брови из отдельных волосков: толще у переносицы, тоньше к виску
+    float t = clamp((ax - 0.012) / 0.042, 0.0, 1.0);
+    float cy = 0.0205 + 0.006 * sin(t * 2.6) - t * 0.002;
+    float th = mix(mix(0.0052, 0.0034, F), mix(0.0022, 0.0016, F), t);
+    float across = (q.y - cy) / th;
+    float inside = (1.0 - smoothstep(0.6, 1.05, abs(across))) * smoothstep(0.009, 0.014, ax) * (1.0 - smoothstep(0.052, 0.058, ax));
+    float hair = fhash(floor(vec2(ax * 3200.0 + across * 3.0 + q.y * 600.0, across * 1.2)));
+    hair = mix(hair, fhash(floor(vec2(ax * 5200.0 - q.y * 900.0, across * 2.0))), 0.4);
+    float brow = inside * mix(0.55, 1.0, hair) * step(0.07, q.z);
+    c = mix(c, hc * 0.85, brow * 0.9);
+    // ресницы и край век
+    float dx = q.x - sx * 0.0315;
+    float u = min(1.0, abs(dx - sx * 0.0015) / 0.0148);
+    float tilt = sx * dx * 0.07;
+    float yU = 0.0047 * mix(1.0, 1.12, F) * (1.0 - u * u) + tilt;
+    float yL = -0.0056 * (1.0 - pow(u, 2.4)) + tilt;
+    float near = (1.0 - smoothstep(0.011, 0.0145, abs(dx - sx * 0.0015))) * step(0.072, q.z);
+    float lash = (1.0 - smoothstep(0.0004, 0.0018, abs(q.y - yU))) * near;
+    c = mix(c, vec3(0.03, 0.02, 0.02), lash * mix(0.75, 0.95, F));
+    // у женщин — лёгкая подводка и тени
+    float liner = (1.0 - smoothstep(0.001, 0.004, q.y - yU)) * step(yU, q.y) * near * F;
+    c = mix(c, c * vec3(0.72, 0.62, 0.66), liner * 0.5);
+    float lowl = (1.0 - smoothstep(0.0003, 0.0012, abs(q.y - yL))) * near;
+    c = mix(c, c * vec3(0.55, 0.42, 0.42), lowl * 0.6);
+    // тень глазницы и складки века
+    float de = length(vec2(dx / 0.02, (q.y - 0.004) / 0.014));
+    if (q.z > 0.06) c = mix(c, c * vec3(0.8, 0.7, 0.72), (1.0 - smoothstep(0.6, 1.3, de)) * 0.35);
     // румянец
-    float dc = length(vec2((q.x - sx * 0.042) / 0.025, (q.y + 0.04) / 0.02));
-    if (q.z > 0.04) c = mix(c, c * vec3(1.08, 0.86, 0.84), (1.0 - smoothstep(0.3, 1.0, dc)) * mix(0.18, 0.35, F));
+    float dc = length(vec2((q.x - sx * 0.042) / 0.025, (q.y + 0.034) / 0.02));
+    if (q.z > 0.04) c = mix(c, c * vec3(1.06, 0.87, 0.85), (1.0 - smoothstep(0.3, 1.0, dc)) * mix(0.16, 0.32, F));
   }
   // тень у линии роста волос
   if (uFF.w > 0.5) {
@@ -102,8 +135,9 @@ vec3 facePaint(vec3 c) {
   if (uFF.y > 0.5) c = mix(c, hc, (1.0 - smoothstep(-0.004, 0.022, beardMaskF(q))) * 0.75);
   // щетина
   if (uFF.z > 0.5) {
-    float jaw = smoothstep(-0.03, -0.06, q.y) * smoothstep(0.02, 0.05, q.z) * smoothstep(0.7, 1.0, dl);
-    c = mix(c, hc + 0.05, jaw * 0.3);
+    float jaw = smoothstep(-0.03, -0.055, q.y) * smoothstep(0.02, 0.05, q.z) * smoothstep(0.75, 1.05, dl);
+    float st = fhash(floor(q.xy * 2500.0));
+    c = mix(c, hc + 0.05, jaw * (0.22 + 0.12 * st));
   }
   return c;
 }`;
@@ -231,7 +265,13 @@ export function eyeMaterial(iris, glow) {
   if (cache.has(k)) return cache.get(k);
   const S = 128, c = document.createElement('canvas'); c.width = c.height = S;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#ece6e0'; ctx.fillRect(0, 0, S, S);
+  ctx.fillStyle = '#e9e2dc'; ctx.fillRect(0, 0, S, S);
+  // склера: к краям розовее, у радужки чище
+  const sg = ctx.createRadialGradient(S * 0.25, S * 0.5, 0, S * 0.25, S * 0.5, S * 0.45);
+  sg.addColorStop(0, '#f2eeea'); sg.addColorStop(0.5, '#ece4de'); sg.addColorStop(1, '#d9b8b0');
+  ctx.save(); ctx.scale(1, 1); ctx.fillStyle = sg; ctx.fillRect(0, 0, S, S); ctx.restore();
+  ctx.strokeStyle = 'rgba(190,80,80,0.18)'; ctx.lineWidth = 0.6;
+  for (let i = 0; i < 14; i++) { const y0 = S * (0.3 + Math.random() * 0.4), x0 = S * (Math.random() < 0.5 ? 0.02 : 0.48); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(S * 0.25 + (x0 < S * 0.25 ? -1 : 1) * S * 0.12, y0 + (Math.random() - 0.5) * S * 0.1, S * 0.25 + (x0 < S * 0.25 ? -1 : 1) * S * 0.09, S * 0.5 + (Math.random() - 0.5) * S * 0.2); ctx.stroke(); }
   // сфера развёрнута: +Z у SphereGeometry — в точке u = 0.25
   const cx = S * 0.25, cy = S * 0.5, R = S * 0.085;
   const ic = new THREE.Color(iris);

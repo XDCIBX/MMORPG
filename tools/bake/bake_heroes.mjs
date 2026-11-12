@@ -8,7 +8,7 @@ import { HERO_BONES } from '../../src/chars/hero/rig.js';
 import { makeKit, sculptBody, facePaint, gripPoint, hexRGB, EYE } from '../../src/chars/hero/anatomy.js';
 import { hairPieces } from '../../src/chars/hero/hair.js';
 import { armorPieces } from '../../src/chars/hero/armor.js';
-import { meshSDF, simplifyAndFinish } from './mesher.mjs';
+import { meshSDF, simplifyAndFinish, zipMeshes } from './mesher.mjs';
 import { MeshoptEncoder } from 'meshoptimizer';
 await MeshoptEncoder.ready;
 
@@ -126,8 +126,17 @@ async function bakeKey(cls, sex) {
   const h = 0.0021 / QUALITY;
   // ---- тело ----
   {
-    const raw = meshSDF(bodySdf, boundsOf(S), h, { log });
-    const m = await simplifyAndFinish(bodySdf, raw, Math.round(56000 * QUALITY), { log });
+    // тело и голова лепятся отдельно (голова — втрое мельче) и сшиваются по шее
+    const nw = kit.bones.neck.getWorldPosition(new THREE.Vector3());
+    const yc = nw.y + kit.dim.neckLen * 0.42;
+    const bb = boundsOf(S);
+    const hw = kit.bones.head.getWorldPosition(new THREE.Vector3());
+    const rawB = meshSDF(bodySdf, [bb[0], bb[1], bb[2], bb[3], yc, bb[5]], h, { log });
+    const mB = await simplifyAndFinish(bodySdf, rawB, Math.round(46000 * QUALITY), { log, lockBorder: true });
+    const hh = h * (Number(process.env.HEADRES) || 0.34);
+    const rawH = meshSDF(bodySdf, [hw.x - 0.16 * kit.hk, yc, hw.z - 0.16 * kit.hk, hw.x + 0.16 * kit.hk, bb[4], hw.z + 0.18 * kit.hk], hh, { log });
+    const mH = await simplifyAndFinish(bodySdf, rawH, Math.round(34000 * QUALITY), { log, lockBorder: true, error: 0.0004 });
+    const m = zipMeshes(mB, mH, yc, log);
     const nv = m.position.length / 3;
     const skinIndex = new Uint8Array(nv * 4), skinWeight = new Float32Array(nv * 4), ao = new Float32Array(nv), color = new Float32Array(nv * 3);
     const region = new Uint8Array(nv);

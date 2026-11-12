@@ -33,7 +33,7 @@ export function beardMask(lx, ly, lz) {
   const ax = Math.abs(lx);
   const line = lerp(-0.068, -0.012, sstep(0.024, 0.068, ax));
   let md = Math.max(ly - line, (0.004 - lz), -0.136 - ly);
-  const mouth = Math.hypot(lx / 0.022, (ly + 0.075) / 0.0105) - 1;
+  const mouth = Math.hypot(lx / 0.0215, (ly + 0.0668) / 0.0115) - 1;
   return Math.max(md, -mouth * 0.012);
 }
 
@@ -64,10 +64,11 @@ export function hairPieces(kit, spec) {
       // шапка: оболочка над кожей головы, к линии роста волос сходит на нет
       const hl = hairline(th, style === 'short' ? 'short' : 'long');
       const md = (hl - ly);                                   // < 0 — внутри области волос
-      const fade = Math.pow(sstep(0, 0.028, -md), 1.4);
+      const fade = Math.pow(sstep(0, 0.045, -md), 1.6);
       const top = sstep(-0.02, 0.09, ly);
-      let thick = ((style === 'short' ? 0.0075 : 0.011 + 0.005 * top) * fade - 0.0018 * (1 - fade)) * hk;
+      let thick = ((style === 'short' ? 0.0072 : 0.0085 + 0.006 * top) * fade - 0.0018 * (1 - fade)) * hk;
       thick += 0.0012 * hk * Math.sin(th * 23 + ly * 70) * fade * (1 - Math.abs(ly) * 4);
+      if (style !== 'short') thick -= 0.007 * hk * Math.exp(-((lx / 0.0045) ** 2)) * sstep(0.0, 0.07, lz) * top;   // пробор
       let cap = smax(b - thick, -(b + 0.004), 0.002);
       cap = smax(cap, (md - 0.01) * hk, 0.003 * hk);
       // уши открыты у коротких
@@ -108,9 +109,9 @@ export function hairPieces(kit, spec) {
       }
       return d;
     };
-    const b = [HC.x - 0.16, HC.y - (long ? 0.42 : pony ? 0.36 : braids ? 0.4 : 0.14), HC.z - 0.2, HC.x + 0.16, HC.y + 0.14, HC.z + 0.15];
+    const b = [HC.x - 0.16 * hk, HC.y - (long ? 0.42 : pony ? 0.36 : braids ? 0.4 : 0.14) * hk, HC.z - 0.2 * hk, HC.x + 0.16 * hk, HC.y + 0.155 * hk, HC.z + 0.16 * hk];
     out.push({
-      name: 'hair', slot: 'hair', kind: 'hair', style: 0, sdf, bounds: b, res: 0.8, tris: long ? 16000 : 11000,
+      name: 'hair', slot: 'hair', kind: 'hair', style: 0, sdf, bounds: b, res: 0.5, tris: long ? 16000 : 11000,
       weights: hairWeights, mats: braids ? ['H', 'T'] : ['H'],
       matAt: braids ? (p) => { const [lx, ly] = loc(p.x, p.y, p.z); return ly < -0.3 && Math.abs(lx) > 0.06 ? 1 : 0; } : null,
     });
@@ -128,12 +129,12 @@ export function hairPieces(kit, spec) {
       d = smax(d, (md - 0.01) * hk, 0.003 * hk);
       // усы
       for (const sx of [-1, 1]) {
-        const mu = capsule(lx, ly, lz, [sx * 0.004, -0.0605, 0.1], [sx * (big ? 0.038 : 0.027), big ? -0.088 : -0.08, 0.087], big ? 0.0085 : 0.0052, big ? 0.006 : 0.0035);
+        const mu = big ? capsule(lx, ly, lz, [sx * 0.004, -0.0525, 0.1025], [sx * 0.036, -0.08, 0.09], 0.0075, 0.0055) : capsule(lx, ly, lz, [sx * 0.005, -0.053, 0.101], [sx * 0.022, -0.06, 0.096], 0.0034, 0.0022);
         d = smin(d, mu * hk, 0.004 * hk);
       }
       if (!big) {
         // аккуратная бородка под подбородком
-        const gt = capsule(lx, ly, lz, [0, -0.108, 0.078], [0, -0.128, 0.072], 0.017, 0.01);
+        const gt = capsule(lx, ly, lz, [0, -0.1, 0.088], [0, -0.122, 0.08], 0.016, 0.009);
         d = smin(d, gt * hk, 0.01 * hk);
       } else {
         // большая борода до пояса, с косичками на конце
@@ -162,7 +163,7 @@ export function hairPieces(kit, spec) {
     };
     const b = [HC.x - 0.12, HC.y - (big ? 0.66 : 0.2), HC.z - 0.06, HC.x + 0.12, HC.y + 0.0, HC.z + 0.2];
     out.push({
-      name: 'beard', slot: 'hair', kind: 'hair', style: 0, sdf, bounds: b, res: 0.75, tris: big ? 14000 : 7000,
+      name: 'beard', slot: 'hair', kind: 'hair', style: 0, sdf, bounds: b, res: 0.45, tris: big ? 14000 : 7000,
       weights: hairWeights, mats: big ? ['H', 'T'] : ['H'],
       matAt: big ? (p) => { const [, ly] = loc(p.x, p.y, p.z); return ly < -0.555 ? 1 : 0; } : null,
     });
