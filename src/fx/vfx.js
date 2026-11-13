@@ -103,7 +103,7 @@ function novaMat(color, color2) {
       void main(){
         vec2 p = vUv * 2.0 - 1.0; float r = length(p); float a = atan(p.y, p.x);
         float n = fbm3(vec3(cos(a) * 3.0, sin(a) * 3.0, r * 4.0 - uK * 3.0 + uSeed));
-        float front = uK * 0.96 + (n - 0.5) * 0.08;
+        float front = max(0.02, uK * 0.96 + (n - 0.5) * 0.08 * smoothstep(0.0, 0.2, uK));
         float ring = smoothstep(front - 0.22, front, r) * (1.0 - smoothstep(front, front + 0.03, r));
         float inner = (1.0 - smoothstep(0.0, front, r)) * 0.18 * n;
         float al = (ring * (0.5 + n) + inner) * (1.0 - uK * uK);

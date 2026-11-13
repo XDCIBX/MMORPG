@@ -36,7 +36,7 @@ export class Game {
   start(data, saved = null) {
     this.effects = new Effects(this.scene);
     this.effects.camera = this.camera;
-    this.effects.lowFx = app.quality < 1;      // на слабых устройствах без призрачных двойников
+    this.effects.lowFx = this.quality < 1;     // на слабых устройствах без призрачных двойников
     this.combat = new Combat(this);
     this.discovered = saved ? saved.discovered : { cities: ['c1'], shops: [] };
     this.player = new Player(this, data);
