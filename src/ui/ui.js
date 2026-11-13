@@ -51,7 +51,9 @@ export class UI {
       b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); b.classList.add('pressed'); fn(); });
       for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => b.classList.remove('pressed'));
     };
-    bind('t-attack', () => g.touchAttack());
+    bind('t-attack', () => { g.touchAttack(); g.player.attackHold = true; });
+    // пока кнопка зажата — серия ударов, отпустил — герой перестаёт бить
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) $('t-attack').addEventListener(ev, () => { g.player.attackHold = false; });
     bind('t-jump', () => g.input.tap('Space'));
     bind('t-talk', () => { const n = g.nearestInteractive(5); if (n) g.interact(n); });
     bind('t-target', () => g.tabTarget());

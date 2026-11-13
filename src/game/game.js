@@ -235,7 +235,7 @@ export class Game {
       const e = this.pick(mx, my, 1.7);
       if (!e) return;
       if (e.isTeleport || e.role) { if (e.interactive) this.interact(e); else this.setTarget(e); return; }
-      if (e === this.target && e.team === 'enemy') { this.player.engaged = true; return; }
+      if (e === this.target && e.team === 'enemy') { this.player.requestAttack(); return; }
       this.setTarget(e);
       return;
     }
@@ -247,7 +247,7 @@ export class Game {
       return;
     }
     this.setTarget(e);
-    if (button === 2 && e.team === 'enemy') this.player.engaged = true;
+    if (button === 2 && e.team === 'enemy') this.player.requestAttack();
   }
 
   // Кнопка атаки на телефоне
@@ -256,7 +256,7 @@ export class Game {
     let t = this.target && this.target.alive && this.target.team === 'enemy' ? this.target : null;
     if (!t) { t = this.mobs.nearestEnemy(P.pos, 30); if (t) this.setTarget(t); }
     if (!t) { this.ui.error('Рядом нет врагов'); return; }
-    P.engaged = true;
+    P.requestAttack();
     if (P.distTo(t) < 40) P.faceTo(t.pos);
   }
 

@@ -63,6 +63,7 @@ export class Player extends Entity {
     this.gcd = 0;
     this.atkTimer = 0;
     this.engaged = false;
+    this.attackQ = 0; this.attackQT = 0; this.attackHold = false;
     this.casting = null;
     this.vy = 0;
     this.onGround = true;
@@ -407,16 +408,22 @@ export class Player extends Entity {
       }
     }
     // ----- автоатака -----
+    // удар только по нажатию: одно нажатие — один удар (ждёт перезарядки до 1,2 с), удержание кнопки — серия
     const tgt = g.target;
-    if (tgt && tgt.alive && tgt.team === 'enemy' && this.engaged && !this.casting && this.stunT <= 0) {
+    if (this.attackQ && g.time - this.attackQT > 1.2) this.attackQ = 0;
+    const wantAttack = this.attackQ > 0 || this.attackHold;
+    if (wantAttack && tgt && tgt.alive && tgt.team === 'enemy' && !this.casting && this.stunT <= 0) {
       const range = this.C.range + (this.rangeAdd || 0) + tgt.radius + (this.C.melee ? 0.6 : 0);
       const d = this.distTo(tgt);
       if (d <= range) {
         if (speed === 0) this.faceTo(tgt.pos, Math.min(1, dt * 10));
         if (this.atkTimer <= 0) {
           this.atkTimer = this.atkInterval;
+          this.attackQ = 0;
           this.autoAttack(tgt);
         }
+      } else if (this.attackQ && !this.attackHold && g.time - this.attackQT > 0.05 && !this.farWarned) {
+        this.farWarned = true; g.ui.error('Цель слишком далеко');
       }
     }
     if (tgt && !tgt.alive) this.engaged = false;
@@ -502,6 +509,12 @@ export class Player extends Entity {
     this.mount = null;
     this.syncModel();
     void g;
+  }
+
+  // Запрос одного удара по текущей цели (ПКМ, повторное касание цели, кнопка ⚔)
+  requestAttack() {
+    this.attackQ = 1; this.attackQT = this.game.time; this.farWarned = false;
+    this.engaged = true;
   }
 
   autoAttack(tgt) {
