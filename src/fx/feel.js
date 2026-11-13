@@ -69,11 +69,11 @@ export class Feel {
     }
   }
   // реакция врага на попадание
-  react(tgt, src, power) {
+  react(tgt, src, power, knock = true) {
     if (!tgt || !tgt.model || !tgt.alive && tgt.hp > 0) return;
     const m = tgt.model;
     m.hitJolt = Math.max(m.hitJolt || 0, Math.min(1, power));
-    if (src && src.pos && !tgt.isBoss && tgt.canMove !== false && power > 0.45) {
+    if (knock && src && src.pos && !tgt.isBoss && tgt.canMove !== false && power > 0.45) {
       const dx = tgt.pos.x - src.pos.x, dz = tgt.pos.z - src.pos.z, d = Math.hypot(dx, dz) || 1;
       tgt.knock = { x: dx / d * power * 2.2, z: dz / d * power * 2.2, t: 0.18 };
     }

@@ -157,7 +157,41 @@ vec3 heroPerturb(vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDirection)
 }`;
 
 // mode: 0 — трипланар, 1 — цилиндр вокруг головы (волосы)
-function patch(m, { tex, scale = 4, bump = 0.6, colorMod = 0.25, mode = 0, center = [0, 0, 0], key, face = null }) {
+const WEAR = {
+  metal: `
+        {
+          // сталь: грязь в углублениях, потёртые светлые кромки, пятна и царапины
+          float big = detAt(0.9, vec2(1.0));
+          float scr = detAt(5.0, vec2(9.0, 0.6));
+          float edge = smoothstep(0.82, 0.98, vAO) * smoothstep(0.35, 0.75, big);
+          diffuseColor.rgb *= mix(0.62, 1.0, smoothstep(0.25, 0.8, vAO));
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(dot(diffuseColor.rgb, vec3(0.33))) * 1.25 + 0.05, edge * 0.45);
+          diffuseColor.rgb *= mix(0.88, 1.06, big);
+          roughK = mix(0.75, 1.45, big) * mix(1.0, 1.6, smoothstep(0.62, 0.8, scr)) * mix(1.25, 0.85, edge);
+        }`,
+  cloth: `
+        {
+          // ткань: неровный крас, выгоревшие места, грязь у подола и в складках
+          float big = detAt(0.6, vec2(1.0));
+          float mid = detAt(2.2, vec2(1.0));
+          diffuseColor.rgb *= mix(0.82, 1.1, big) * mix(0.93, 1.04, mid);
+          float lum = dot(diffuseColor.rgb, vec3(0.33));
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lum), 0.12 + smoothstep(0.6, 0.9, big) * 0.12);
+          float dirt = smoothstep(0.35, 0.05, vRest.y) * 0.35 + (1.0 - smoothstep(0.3, 0.75, vAO)) * 0.25;
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.62, 0.55, 0.45), dirt);
+        }`,
+  leather: `
+        {
+          // кожа: потёртости на выпуклостях светлее, складки и швы темнее, пятна
+          float big = detAt(0.8, vec2(1.0));
+          float edge = smoothstep(0.8, 0.97, vAO) * smoothstep(0.4, 0.8, big);
+          diffuseColor.rgb *= mix(0.78, 1.08, big);
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.45 + 0.03, edge * 0.5);
+          diffuseColor.rgb *= mix(0.7, 1.0, smoothstep(0.25, 0.75, vAO));
+          roughK = mix(1.15, 0.8, edge);
+        }`,
+};
+function patch(m, { tex, scale = 4, bump = 0.6, colorMod = 0.25, mode = 0, center = [0, 0, 0], key, face = null, wear = null }) {
   m.onBeforeCompile = (sh) => {
     sh.uniforms.tDet = { value: tex };
     sh.uniforms.uScale = { value: scale };
@@ -189,17 +223,27 @@ function patch(m, { tex, scale = 4, bump = 0.6, colorMod = 0.25, mode = 0, cente
           return texture2D(tDet, tp.zy).r * bw.x + texture2D(tDet, tp.xz).r * bw.y + texture2D(tDet, tp.xy).r * bw.z;`}
         }
         ${PERTURB}
-        ${face ? FACE_GLSL : ''}`)
+        ${face ? FACE_GLSL : ''}
+        // та же фактура в другом масштабе — для пятен, износа и царапин
+        float detAt(float sc, vec2 stretch) {
+          vec3 bw = pow(abs(vRestN), vec3(4.0)); bw /= (bw.x + bw.y + bw.z);
+          vec3 tp = vRest * sc;
+          return texture2D(tDet, tp.zy * stretch).r * bw.x + texture2D(tDet, tp.xz * stretch).r * bw.y + texture2D(tDet, tp.xy * stretch).r * bw.z;
+        }
+        float wearK = 0.0, roughK = 1.0;`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         detH = sampleDet();
         ${face ? 'diffuseColor.rgb = facePaint(diffuseColor.rgb);' : ''}
-        diffuseColor.rgb *= mix(1.0 - uCM, 1.0 + uCM * 0.6, detH) * vAO;`)
+        diffuseColor.rgb *= mix(1.0 - uCM, 1.0 + uCM * 0.6, detH) * vAO;
+        ${wear ? WEAR[wear] : ''}`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        roughnessFactor = clamp(roughnessFactor * roughK, 0.04, 1.0);`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         normal = heroPerturb(-vViewPosition, normal, vec2(dFdx(detH), dFdy(detH)) * uBump, faceDirection);`)
       .replace('#include <aomap_fragment>', `#include <aomap_fragment>
         reflectedLight.indirectSpecular *= mix(0.35, 1.0, vAO);`);
   };
-  m.customProgramCacheKey = () => 'hero_' + key + mode;
+  m.customProgramCacheKey = () => 'hero_' + key + mode + (wear || '');
   return m;
 }
 
@@ -216,7 +260,7 @@ export function heroMat(kind, color, opts = {}) {
       const pt = plateTex();
       m = new THREE.MeshStandardMaterial({ color, roughness: opts.rough ?? 0.32, metalness: 0.9, envMapIntensity: 1.15 });
       if (opts.glow) { m.emissive = new THREE.Color(opts.glow); m.emissiveIntensity = opts.glowI || 0.15; }
-      patch(m, { tex: pt.map, scale: 2.2, bump: 0.35, colorMod: 0.08, key: 'metal' });
+      patch(m, { tex: pt.map, scale: 2.2, bump: 0.35, colorMod: 0.08, key: 'metal', wear: 'metal' });
       break;
     }
     case 'chain':
@@ -225,11 +269,11 @@ export function heroMat(kind, color, opts = {}) {
       break;
     case 'leather':
       m = new THREE.MeshStandardMaterial({ color, roughness: 0.66, metalness: 0.04 });
-      patch(m, { tex: stitchedLeatherTex().map, scale: 4.5, bump: 0.8, colorMod: 0.3, key: 'leather' });
+      patch(m, { tex: stitchedLeatherTex().map, scale: 4.5, bump: 0.8, colorMod: 0.3, key: 'leather', wear: 'leather' });
       break;
     case 'cloth':
       m = new THREE.MeshStandardMaterial({ color, roughness: 0.88, metalness: 0, side: THREE.DoubleSide });
-      patch(m, { tex: clothTex('#ffffff', 2), scale: 3.5, bump: 0.5, colorMod: 0.22, key: 'cloth' });
+      patch(m, { tex: clothTex('#ffffff', 2), scale: 3.5, bump: 0.75, colorMod: 0.22, key: 'cloth', wear: 'cloth' });
       break;
     case 'fur':
       m = new THREE.MeshStandardMaterial({ color, roughness: 0.95 });

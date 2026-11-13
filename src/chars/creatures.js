@@ -540,7 +540,7 @@ function humanoidMob(def, extra = {}) {
       h.tailPiv = piv;
     }
     h.isMobHero = true;
-  } else h = new Humanoid(spec);
+  } else { h = new Humanoid(spec); if (canHero) h.needsUpgrade = true; }
   if (def.armor) {
     const a = def.armor;
     const v = { kind: a.kind, c1: a.c1, c2: a.c2, trim: a.trim || '#8a7a5a', tier: a.tier || 1, style: a.style || 0, gem: a.gem || null };

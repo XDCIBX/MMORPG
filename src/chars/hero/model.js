@@ -275,8 +275,20 @@ export class HeroModel extends Humanoid {
 }
 
 // материал детали брони по коду и описанию предмета
+// настоящие красители приглушённые; латы — сталь с лёгким оттенком, ярче только у высоких уровней
+function muted(c, k = 0.28, dark = 0.92) {
+  const col = new THREE.Color(c || '#888888');
+  const l = col.r * 0.3 + col.g * 0.59 + col.b * 0.11;
+  col.lerp(new THREE.Color(l, l, l), k).multiplyScalar(dark);
+  return '#' + col.getHexString();
+}
+function steel(c, tier) {
+  const col = new THREE.Color(c || '#a0a4aa');
+  return '#' + new THREE.Color('#9da2a8').lerp(col, tier >= 5 ? 0.55 : 0.38).getHexString();
+}
 function armorMat(code, v) {
-  const tierRough = v.tier >= 5 ? 0.24 : 0.34;
+  const tierRough = v.tier >= 5 ? 0.28 : 0.38;
+  v = Object.assign({}, v, { c1: v.kind === 'heavy' ? steel(v.c1, v.tier || 1) : muted(v.c1), c2: muted(v.c2 || '#7a1c1c', 0.25) });
   const glow = v.tier >= 6 ? v.gem : null;
   switch (code) {
     case 'P': return v.kind === 'heavy' ? heroMat('metal', v.c1, { rough: tierRough, glow, glowI: 0.12 }) : v.kind === 'leather' ? heroMat('leather', v.c1) : heroMat('cloth', v.c1);

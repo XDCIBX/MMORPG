@@ -55,7 +55,7 @@ export class Combat {
     // реакция на удар игрока: вздрагивание, отбрасывание, стоп-кадр на крите
     if (isPlayerSrc && tgt !== g.player && dmg > 0 && !opts.dot && g.feel) {
       const pw = (opts.power || 0.35) * (crit ? 1.5 : 1);
-      g.feel.react(tgt, src, pw);
+      g.feel.react(tgt, src, pw, !!opts.power);   // отбрасывают только умения
       if (crit) g.feel.hitStop(0.045 + pw * 0.04);
     }
     // угроза

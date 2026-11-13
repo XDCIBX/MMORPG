@@ -2,6 +2,8 @@
 import { shadowLOD } from '../chars/optimize.js';
 import * as THREE from 'three';
 import { Feel } from '../fx/feel.js';
+import { heroReady } from '../chars/hero/model.js';
+import { prepareMobBodies } from '../chars/creatures.js';
 import { Entity } from './entity.js';
 import { buildCreature } from '../chars/creatures.js';
 import { MOB_TYPES, SPAWNS, BOSSES, mobHp, mobDmg, mobArmor } from '../data/mobs.js';
@@ -188,6 +190,11 @@ export class Mob extends Entity {
     }
     this.pos.y = this.def.model === 'wraith' || this.def.model === 'elemental' ? Math.max(0.2, g.world.standY(this.pos.x, this.pos.z)) : Math.max(g.world.standY(this.pos.x, this.pos.z), -1.4);
     if (this.model) {
+      // подмена на детальное тело, когда оно загрузилось (не больше одной за кадр)
+      if (this.model.needsUpgrade && this.alive && heroReady('npc_m') && g._mobUpT !== g.time) {
+        g._mobUpT = g.time;
+        this.disposeModel(); this.ensureModel();
+      }
       this.model.update(dt, { speed: Math.abs(speed) > 0.01 ? speed / this.scale : 0, runSpeed: 6, howl: this.howling > 0, breathing: this.breathing > 0 });
       if (this.alive) Feel.applyJolt(this.model, dt);
       if (this.howling > 0) this.howling -= dt;

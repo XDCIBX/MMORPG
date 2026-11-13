@@ -9,6 +9,7 @@ import { Combat } from './combat.js';
 import { Effects } from '../fx/effects.js';
 import { furLOD } from '../chars/beasts.js';
 import { Feel } from '../fx/feel.js';
+import { prepareMobBodies } from '../chars/creatures.js';
 import { FX } from '../fx/particles.js';
 import { UI } from '../ui/ui.js';
 import { CITIES, SECRET_SHOPS } from '../data/world.js';
@@ -38,6 +39,7 @@ export class Game {
     this.effects = new Effects(this.scene);
     this.effects.camera = this.camera;
     this.feel = new Feel(this);
+    prepareMobBodies();
     this.effects.feel = this.feel; this.effects.game = this;
     this.effects.lowFx = this.quality < 1;     // на слабых устройствах без призрачных двойников
     this.combat = new Combat(this);
