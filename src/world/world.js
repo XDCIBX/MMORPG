@@ -6,7 +6,7 @@ import { Vegetation } from './vegetation.js';
 import { Collision } from './collision.js';
 import { buildCity, windowMat, flameMat } from './city.js';
 import { fountainUniforms } from './fountain.js';
-import { buildPOI, buildShop } from './pois.js';
+import { buildPOI, buildShop, platformHeight } from './pois.js';
 import { CITIES, SECRET_SHOPS, POIS, BIOMES } from '../data/world.js';
 import { FX } from '../fx/particles.js';
 import { clamp, lerp, smoothstep } from '../core/util.js';
@@ -276,7 +276,7 @@ export class World {
   groundY(x, z) { return this.terrain.getHeight(x, z); }
   // Высота опоры: учитывает мостовые городов
   standY(x, z) {
-    const h = this.terrain.getHeight(x, z);
+    const h = Math.max(this.terrain.getHeight(x, z), platformHeight(x, z));
     for (const c of this.cities) {
       if (Math.hypot(x - c.def.x, z - c.def.z) < c.def.r + 3) return Math.max(h, c.cy + 0.06);
     }

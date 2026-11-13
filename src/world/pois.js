@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { Batcher, boxUV, cylUV, gableRoof, gableWall, M4 } from './builders.js';
 import { styleMats, flameMat, windowMat } from './city.js';
 import { mulberry32 } from '../core/util.js';
+import { buildSpiderLair } from './spiderweb.js';
 
 const mats = {};
 function mat(key, opts) { if (!mats[key]) mats[key] = new THREE.MeshStandardMaterial(opts); return mats[key]; }
@@ -29,10 +30,49 @@ function campfire(B, x, y, z, animated) {
   animated.push({ type: 'fire', x, y: y + 0.4, z, big: true });
 }
 
+// Площадки, по которым ходят (верх у каждой ровный): world.standY учитывает их высоту
+export const PLATFORMS = [];
+// Каменная площадка: верх на высоте центра + h; основание опускается до самой низкой точки
+// рельефа под ней, а если земля где-то выше — площадка поднимается, чтобы её не протыкало
+function platform(B, terrain, mat, x, z, rTop, rBot, h, segs, tile = 2, ry = 0) {
+  const y0 = terrain.getHeight(x, z);
+  let lo = y0, hi = y0;
+  for (let k = 0; k < 3; k++) for (let i = 0; i < 24; i++) {
+    const a = i / 24 * Math.PI * 2, r = [rTop * 0.5, rTop, rBot][k];
+    const t = terrain.getHeight(x + Math.cos(a) * r, z + Math.sin(a) * r);
+    lo = Math.min(lo, t); if (k < 2) hi = Math.max(hi, t);
+  }
+  const top = Math.max(y0 + h, hi + 0.12);
+  const depth = top - lo + 0.5;
+  B.add(cylUV(rTop, rBot, depth, segs, tile), mat, M4(x, top - depth / 2, z, ry));
+  // радиус, внутри которого верх точно ровный (вписанный в многоугольник)
+  PLATFORMS.push({ x, z, rIn: rTop * Math.cos(Math.PI / segs), rTop, rBot, top, depth });
+  return top;
+}
+// Высота площадки в точке (или -Infinity, если тут площадки нет)
+export function platformHeight(px, pz) {
+  let best = -Infinity;
+  for (const pl of PLATFORMS) {
+    const d = Math.hypot(px - pl.x, pz - pl.z);
+    if (d > pl.rBot) continue;
+    let y;
+    if (d <= pl.rIn) y = pl.top;
+    else {
+      // скошенный край: от верха к земле
+      const k = (d - pl.rIn) / Math.max(0.01, pl.rBot - pl.rIn);
+      y = pl.top - k * k * pl.depth;
+    }
+    if (y > best) best = y;
+  }
+  return best;
+}
+
 export function buildPOI(p, terrain, collision, root, animated) {
   const B = new Batcher();
+  const extra = [];
   const rnd = mulberry32(Math.abs(Math.round(p.x * 13 + p.z * 7)));
-  const x = p.x, z = p.z, y = terrain.getHeight(x, z);
+  const x = p.x, z = p.z;
+  let y = terrain.getHeight(x, z);
   const M = styleMats('timber');
   const S = styleMats('stone');
   switch (p.id) {
@@ -110,7 +150,7 @@ export function buildPOI(p, terrain, collision, root, animated) {
       break;
     }
     case 'shrine': {
-      B.add(cylUV(5, 5.4, 0.6, 24, 2), S.wall2, M4(x, y + 0.3, z));
+      y = platform(B, terrain, S.wall2, x, z, 5, 5.4, 0.6, 24, 2) - 0.6;
       for (let i = 0; i < 6; i++) {
         const a = i / 6 * Math.PI * 2;
         B.add(cylUV(0.35, 0.4, 5, 12, 2), styleMats('marble').wall, M4(x + Math.cos(a) * 4.2, y + 3, z + Math.sin(a) * 4.2));
@@ -132,21 +172,17 @@ export function buildPOI(p, terrain, collision, root, animated) {
       break;
     }
     case 'spiderlair': {
-      for (let i = 0; i < 16; i++) {
-        const a = rnd() * 6.28, r = 8 + rnd() * 20;
-        const wx = x + Math.cos(a) * r, wz = z + Math.sin(a) * r;
-        const pl = new THREE.CircleGeometry(2.5 + rnd() * 3, 8);
-        B.add(pl, webM(), M4(wx, y + 2.5 + rnd() * 3, wz, rnd() * 6, 1, 1, 1, rnd() - 0.5), { noShadow: true });
-      }
+      buildSpiderLair(B, extra, x, y, z, rnd, terrain, collision);
       for (let i = 0; i < 14; i++) {
         const a = rnd() * 6.28, r = rnd() * 8;
-        B.add(new THREE.SphereGeometry(0.5 + rnd() * 0.3, 10, 8), mat('egg', { color: '#d8e0b0', roughness: 0.4, emissive: '#405010', emissiveIntensity: 0.3 }), M4(x + Math.cos(a) * r, y + 0.4, z + Math.sin(a) * r, 0, 1, 1.3, 1));
+        const ex = x + Math.cos(a) * r, ez = z + Math.sin(a) * r;
+        B.add(new THREE.SphereGeometry(0.5 + rnd() * 0.3, 10, 8), mat('egg', { color: '#d8e0b0', roughness: 0.4, emissive: '#405010', emissiveIntensity: 0.3 }), M4(ex, terrain.getHeight(ex, ez) + 0.4, ez, 0, 1, 1.3, 1));
       }
-      for (let i = 0; i < 10; i++) { const a = rnd() * 6.28; rock(B, x + Math.cos(a) * 30, y, z + Math.sin(a) * 30, 2 + rnd() * 2, rnd, darkRockM()); }
+      for (let i = 0; i < 10; i++) { const a = rnd() * 6.28, rx = x + Math.cos(a) * 30, rz = z + Math.sin(a) * 30; rock(B, rx, terrain.getHeight(rx, rz), rz, 2 + rnd() * 2, rnd, darkRockM()); }
       break;
     }
     case 'colossus': {
-      B.add(cylUV(16, 17, 0.8, 32, 3), S.wall, M4(x, y + 0.4, z));
+      y = platform(B, terrain, S.wall, x, z, 16, 17, 0.8, 32, 3) - 0.8;
       for (let i = 0; i < 8; i++) {
         const a = i / 8 * Math.PI * 2;
         const h = 4 + rnd() * 8;
@@ -160,7 +196,7 @@ export function buildPOI(p, terrain, collision, root, animated) {
       break;
     }
     case 'cursedaltar': {
-      B.add(cylUV(5, 6, 0.8, 8, 2), darkRockM(), M4(x, y + 0.4, z));
+      y = platform(B, terrain, darkRockM(), x, z, 5, 6, 0.8, 8, 2) - 0.8;
       B.add(boxUV(3, 1.4, 1.6, 1), darkRockM(), M4(x, y + 1.5, z));
       B.add(new THREE.ConeGeometry(1.2, 9, 4), mat('obsid', { color: '#100818', roughness: 0.2, metalness: 0.5 }), M4(x, y + 5.5, z - 3, Math.PI / 4));
       for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2; B.add(new THREE.OctahedronGeometry(0.4), glowM('#a040ff'), M4(x + Math.cos(a) * 4.5, y + 1.6, z + Math.sin(a) * 4.5)); }
@@ -180,7 +216,7 @@ export function buildPOI(p, terrain, collision, root, animated) {
       break;
     }
     case 'obelisk': {
-      B.add(cylUV(4, 4.5, 0.8, 6, 2), S.wall2, M4(x, y + 0.4, z));
+      y = platform(B, terrain, S.wall2, x, z, 4, 4.5, 0.8, 6, 2) - 0.8;
       B.add(new THREE.ConeGeometry(1.3, 14, 4), mat('starob', { color: '#1a1a30', roughness: 0.25, metalness: 0.6 }), M4(x, y + 7.8, z, Math.PI / 4));
       for (let i = 0; i < 8; i++) B.add(new THREE.OctahedronGeometry(0.22), glowM('#a0c0ff'), M4(x + Math.sin(i) * 0.5, y + 2 + i * 1.3, z + Math.cos(i) * 0.5));
       animated.push({ type: 'holy', x, y: y + 12, z, color: '#a0c0ff' });
@@ -192,6 +228,7 @@ export function buildPOI(p, terrain, collision, root, animated) {
   g.name = 'poi_' + p.id;
   root.add(g);
   B.build(g);
+  for (const o of extra) g.add(o);
   return g;
 }
 
