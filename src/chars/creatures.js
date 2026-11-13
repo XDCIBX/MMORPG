@@ -14,7 +14,13 @@ import { mergeToJoints } from './optimize.js';
 import { Beast } from './beasts.js';
 import { Quad } from './quad.js';
 import { Spider as SpiderModel } from './spider.js';
-import { DragonQ } from './dragon.js';
+import { DragonQ, scaleMaterial } from './dragon.js';
+import { MOB_HEADS, attachMobHead } from './mobheads.js';
+import { HeroModel, loadHero, heroReady, getHero } from './hero/model.js';
+import { heroMat } from './hero/materials.js';
+import { furShellSolid } from './quad.js';
+import { IS_TOUCH } from '../core/device.js';
+const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
 
 const cmats = new Map();
 function furMat(color, rough = 0.92) {
@@ -225,10 +231,41 @@ class Golem extends Creature {
 }
 
 // ---------- Призрак ----------
+// Саван: рваный подол (дыры по шуму, к низу больше), колыхание ткани, внутреннее свечение по краям
+const wraithMats = new Map();
+function wraithRobeMat(c1, c2) {
+  const k = c1 + c2;
+  if (wraithMats.has(k)) return wraithMats.get(k);
+  const m = new THREE.MeshStandardMaterial({ color: c1, roughness: 0.95, transparent: true, opacity: 0.88, side: THREE.DoubleSide, emissive: c2, emissiveIntensity: 0.05, depthWrite: true });
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = golemTime;
+    sh.uniforms.uEdge = { value: new THREE.Color(c2) };
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uTime; varying vec3 vOP;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vOP = position;
+        float low = clamp(-position.y * 0.9, 0.0, 1.0);
+        transformed.x += sin(uTime * 2.3 + position.y * 5.0 + position.z * 3.0) * 0.05 * low;
+        transformed.z += cos(uTime * 1.9 + position.y * 4.0 + position.x * 3.0) * 0.06 * low;`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uTime; uniform vec3 uEdge; varying vec3 vOP; float gTear;\n' + NOISE_GLSL)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        float low = clamp(-vOP.y * 1.1 - 0.1, 0.0, 1.0);
+        float n = fbm3(vec3(vOP.x * 5.0, vOP.y * 2.5 - uTime * 0.25, vOP.z * 5.0));
+        float cut = n - low * 0.75 + 0.18;
+        if (cut < 0.0) discard;
+        gTear = smoothstep(0.12, 0.0, cut) * low;
+        diffuseColor.rgb *= 0.75 + 0.3 * fbm3(vOP * 8.0);`)
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n        totalEmissiveRadiance += uEdge * gTear * 1.4;');
+  };
+  m.customProgramCacheKey = () => 'wraithrobe';
+  wraithMats.set(k, m);
+  return m;
+}
 class Wraith extends Creature {
   constructor(def) {
     super();
-    const robe = new THREE.MeshStandardMaterial({ color: def.fur, roughness: 0.9, transparent: true, opacity: 0.85, side: THREE.DoubleSide, emissive: def.fur2, emissiveIntensity: 0.08 });
+    const robe = wraithRobeMat(def.fur, def.fur2);
     this.height = 2.1;
     const torso = this.pivot(this.body, 0, 0.9, 0);
     this.torso = torso;
@@ -254,6 +291,7 @@ class Wraith extends Creature {
     this.def = def;
   }
   update(dt, st = {}) {
+    golemTime.value = performance.now() * 0.001;
     this.baseUpdate(dt);
     const t = this.time;
     this.torso.position.y = 0.9 + Math.sin(t * 2) * 0.12;
@@ -275,25 +313,63 @@ class Elemental extends Creature {
   constructor(def) {
     super();
     this.def = def;
-    this.height = 2.2;
+    this.height = 2.3;
     const core = this.pivot(this.body, 0, 1.3, 0);
     this.torso = core;
-    this.m(new THREE.IcosahedronGeometry(0.42, 1), gemMat(def.fur, 2.2), core);
-    this.m(new THREE.IcosahedronGeometry(0.62, 1), glowMat(def.fur2, 0.35), core);
-    const rock = new THREE.MeshStandardMaterial({ color: '#2a1a14', roughness: 0.9, flatShading: true, emissive: '#ff3000', emissiveIntensity: 0.25 });
-    this.shards = [];
-    for (let i = 0; i < 9; i++) {
-      const s = this.m(new THREE.DodecahedronGeometry(0.16 + Math.random() * 0.12, 0), rock, core);
-      s.userData.a = i / 9 * Math.PI * 2; s.userData.r = 0.75 + Math.random() * 0.25; s.userData.h = (Math.random() - 0.5) * 0.9;
-      this.shards.push(s);
+    const c1 = def.fur || '#ff6020', c2 = def.fur2 || '#ffd040';
+    // каркас из обсидиана с раскалёнными трещинами
+    const tintC = new THREE.Color('#2a1c16');
+    const geos = golemGeos([tintC.r ** (1 / 2.2), tintC.g ** (1 / 2.2), tintC.b ** (1 / 2.2)]);
+    const rockM = golemRockMat(c2, true);
+    let sd = 991;
+    const rnd = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+    const rk = (r, parent, x, y, z, sx = 1, sy = 1, sz = 1) => { const m = this.m(geos[Math.floor(rnd() * geos.length)], rockM, parent, x, y, z); m.scale.set(sx * r, sy * r, sz * r); m.rotation.set(rnd() * 6, rnd() * 6, rnd() * 6); return m; };
+    // пламя: несколько слоёв огненной оболочки
+    this.flames = [];
+    const flame = (r, parent, x, y, z, sx, sy, sz, a = 0.9, disp = 0.5) => {
+      const m = this.m(new THREE.IcosahedronGeometry(r, 3), fireMat(c1, c2, { disp }), parent, x, y, z);
+      m.scale.set(sx, sy, sz); m.castShadow = false; m.material.uniforms.uAlpha.value = a;
+      this.flames.push(m); return m;
+    };
+    flame(0.42, core, 0, 0.05, 0, 1.0, 1.45, 0.8, 0.85, 0.6);           // торс
+    flame(0.3, core, 0, -0.75, 0, 0.8, 1.7, 0.8, 0.8, 0.8);             // огненный вихрь вместо ног
+    rk(0.24, core, 0, 0.18, 0.12, 1.3, 1.1, 0.7);                        // грудная плита
+    rk(0.18, core, -0.17, -0.12, 0.1, 1, 1, 0.8);
+    rk(0.18, core, 0.17, -0.12, 0.1, 1, 1, 0.8);
+    rk(0.16, core, 0, -0.32, 0.06, 1.1, 0.8, 0.8);
+    const head = this.pivot(core, 0, 0.72, 0.05);
+    this.head = head;
+    rk(0.17, head, 0, 0, 0, 1, 1.1, 1);
+    flame(0.2, head, 0, 0.16, -0.02, 1, 1.9, 1, 0.85, 0.7);              // огненная «грива»
+    for (const sx of [-1, 1]) this.m(ellipsoid(0.04, 0.022, 0.02), gemMat('#fff4c0', 5), head, sx * 0.065, 0.02, 0.15);
+    this.arms = [];
+    for (const sx of [-1, 1]) {
+      const sh = this.pivot(core, sx * 0.48, 0.38, 0);
+      rk(0.17, sh, 0, 0, 0, 1.2, 1, 1);
+      flame(0.13, sh, 0, -0.3, 0, 1, 2.6, 1, 0.8, 0.5);
+      const el = this.pivot(sh, 0, -0.55, 0);
+      flame(0.12, el, 0, -0.25, 0.05, 1, 2.4, 1, 0.8, 0.5);
+      rk(0.15, el, 0, -0.5, 0.05, 1.1, 1, 1.1);                          // кулак
+      this.arms.push({ sh, el, sx });
     }
-    this.light = { intensity: 0 }; // без динамического света (иначе перекомпиляция шейдеров)
+    // вокруг кружат угли
+    this.shards = [];
+    for (let i = 0; i < 7; i++) {
+      const sh = rk(0.07 + rnd() * 0.06, core, 0, 0, 0);
+      sh.userData.a = i / 7 * Math.PI * 2; sh.userData.r = 0.75 + rnd() * 0.3; sh.userData.h = (rnd() - 0.5) * 1.1;
+      this.shards.push(sh);
+    }
+    this.light = { intensity: 0 };
   }
   update(dt) {
     this.baseUpdate(dt);
     const t = this.time;
     this.torso.position.y = 1.3 + Math.sin(t * 2.5) * 0.12;
-    this.torso.rotation.y = t * 0.6;
+    this.torso.rotation.y = Math.sin(t * 0.7) * 0.25;
+    let aa = -0.25 + Math.sin(t * 1.6) * 0.1;
+    if (this.action) aa = -0.25 - Math.max(0, this.strike()) * 1.6;
+    for (const A of this.arms) { A.sh.rotation.x = aa; A.sh.rotation.z = A.sx * 0.35; A.el.rotation.x = -0.5; }
+    for (const f of this.flames) f.rotation.y += dt * 1.5;
     for (const s of this.shards) {
       const a = s.userData.a + t * 1.2;
       s.position.set(Math.cos(a) * s.userData.r, s.userData.h + Math.sin(t * 2 + s.userData.a) * 0.1, Math.sin(a) * s.userData.r);
@@ -422,9 +498,48 @@ class Dragon extends Creature {
 }
 
 // ---------- Гуманоидные монстры ----------
+// детальные тела для гуманоидных монстров (те же, что у горожан); на телефонах — облегчённые
+const MOB_BODY = 'npc_m';
+let mobBodyAsked = false;
+export function prepareMobBodies() { if (!IS_TOUCH && !mobBodyAsked) { mobBodyAsked = true; loadHero(MOB_BODY).catch(() => {}); } }
 function humanoidMob(def, extra = {}) {
   const spec = Object.assign({}, def.spec || {});
-  const h = new Humanoid(spec);
+  const ht = spec.headType || 'human';
+  const canHero = !IS_TOUCH && ht !== 'skull' && (ht === 'human' || MOB_HEADS.has(ht));
+  prepareMobBodies();
+  let h;
+  if (canHero && heroReady(MOB_BODY)) {
+    // тело без рубахи у тех, кто по описанию без неё
+    const look = Object.assign({}, spec, { base: Object.assign({ shirt: null, pants: null, boots: null }, spec.base || {}) });
+    h = new HeroModel(look, getHero(MOB_BODY));
+    if (MOB_HEADS.has(ht)) attachMobHead(h, spec, ht === 'lizard' ? scaleMaterial(null, spec.skin) : null);
+    if (ht === 'yeti') {
+      // йети целиком в шерсти
+      const geo = h.bodyMesh.geometry;
+      if (!geo.attributes.aFur) geo.setAttribute('aFur', new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count).fill(0.04), 1));
+      const n = 6;
+      for (let s = 1; s <= n; s++) { const sm = new THREE.SkinnedMesh(geo, furShellSolid(s / n, spec.skin)); sm.frustumCulled = false; sm.userData.shell = true; h.body.add(sm); sm.bind(h.skeleton); }
+    }
+    if (spec.tail) {
+      // хвост ящера / демона
+      const tm = ht === 'lizard' ? scaleMaterial(null, spec.skin) : heroMat('skin', spec.skin || '#8a2a1a');
+      const pts = [V3(0, 0, -0.08), V3(0, -0.12, -0.32), V3(0, -0.38, -0.55), V3(0, -0.72, -0.62)];
+      const curve = new THREE.CatmullRomCurve3(pts);
+      const tg = new THREE.TubeGeometry(curve, 18, 0.07, 10);
+      const pa = tg.attributes.position;
+      for (let i = 0; i < pa.count; i++) { const t = Math.floor(i / 11) / 18, c = curve.getPoint(Math.min(1, t)), kk = 1 - t * 0.85; pa.setXYZ(i, c.x + (pa.getX(i) - c.x) * kk, c.y + (pa.getY(i) - c.y) * kk, c.z + (pa.getZ(i) - c.z) * kk); }
+      tg.computeVertexNormals();
+      const n = tg.attributes.position.count;
+      tg.setAttribute('aAO', new THREE.BufferAttribute(new Uint8Array(n).fill(220), 1, true));
+      tg.setAttribute('aScale', new THREE.BufferAttribute(new Float32Array(n).fill(0.012), 1));
+      tg.setAttribute('aBelly', new THREE.BufferAttribute(new Float32Array(n).fill(0), 1));
+      const tail = new THREE.Mesh(tg, tm); tail.castShadow = true;
+      const piv = new THREE.Group(); piv.position.set(0, 0, -0.06); piv.add(tail);
+      h.j.hips.add(piv);
+      h.tailPiv = piv;
+    }
+    h.isMobHero = true;
+  } else h = new Humanoid(spec);
   if (def.armor) {
     const a = def.armor;
     const v = { kind: a.kind, c1: a.c1, c2: a.c2, trim: a.trim || '#8a7a5a', tier: a.tier || 1, style: a.style || 0, gem: a.gem || null };
@@ -454,7 +569,7 @@ function humanoidMob(def, extra = {}) {
     }
     h.updateExtra = (dt, t) => { for (const W of h.wings) W.w.rotation.y = W.sx * (0.4 + Math.sin(t * 2) * 0.25); };
   }
-  if (spec.headType === 'yeti') {
+  if (spec.headType === 'yeti' && !h.isMobHero) {
     const fur = basicMat(spec.skin, 0.95);
     const tuft = (parent, x, y, z, r) => { const m = new THREE.Mesh(ellipsoid(r, r * 1.3, r), fur); m.position.set(x, y, z); m.castShadow = true; parent.add(m); };
     for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; tuft(h.j.chest, Math.cos(a) * 0.17, 0.08 + (i % 3) * 0.08, Math.sin(a) * 0.12, 0.08); }
@@ -477,9 +592,9 @@ function humanoidMob(def, extra = {}) {
     crown.add(g);
     h.headC.add(crown);
   }
-  h.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  h.root.traverse(o => { if (o.isMesh && !o.userData.shell) o.castShadow = true; });
   const orig = h.update.bind(h);
-  h.update = (dt, st) => { orig(dt, st); animateGear(h, h.time); };
+  h.update = (dt, st) => { orig(dt, st); animateGear(h, h.time); if (h.tailPiv) { h.tailPiv.rotation.y = Math.sin(h.time * 1.7) * 0.35; h.tailPiv.rotation.x = Math.sin(h.time * 1.1) * 0.08; } };
   h.height = h.headTop() * (1 / Math.max(0.01, spec.scale || 1));
   return h;
 }

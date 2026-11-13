@@ -131,10 +131,10 @@ vec3 voro(vec2 x){
   return vec3(sqrt(md), sqrt(md2) - sqrt(md), hash2(n + floor(mr + f + 0.5)).x);
 }`;
 const matCache = new Map();
-function scaleMaterial(glow) {
-  const key = 'scale' + glow;
+export function scaleMaterial(glow, solid = null) {
+  const key = 'scale' + glow + (solid || '');
   if (matCache.has(key)) return matCache.get(key);
-  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.1 });
+  const m = new THREE.MeshStandardMaterial(solid ? { color: solid, roughness: 0.5, metalness: 0.05 } : { vertexColors: true, roughness: 0.45, metalness: 0.1 });
   const gc = new THREE.Color(glow || '#000000');
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uGlow = { value: gc };

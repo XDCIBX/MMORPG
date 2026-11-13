@@ -4,6 +4,8 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildCreature } from '../../src/chars/creatures.js';
 import { furLOD } from '../../src/chars/beasts.js';
 import { MOB_TYPES, BOSSES } from '../../src/data/mobs.js';
+import { loadHero } from '../../src/chars/hero/model.js';
+window.__HERO_BASE = '../../';
 
 const q = new URLSearchParams(location.search);
 const W = Number(q.get('w') || 960), H = Number(q.get('h') || 540);
@@ -29,6 +31,8 @@ const floor = new THREE.Mesh(new THREE.CircleGeometry(12, 48), new THREE.MeshSta
 floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
 const cam = new THREE.PerspectiveCamera(Number(q.get('fov') || 32), W / H, 0.05, 200);
 window.__ready = false;
+(async () => {
+if (q.get('hero') !== '0') await loadHero('npc_m').catch(e => console.error(e));
 const t0 = performance.now();
 const list = (q.get('list') || 'wolf').split(',');
 const models = [];
@@ -57,3 +61,4 @@ furLOD.cam.copy(cam.position);
 for (const m of models) m.update(0.001, { speed });
 renderer.render(scene, cam);
 window.__ready = true;
+})();

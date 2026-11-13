@@ -377,6 +377,18 @@ function shellMat(k, combDir) {
   matCache.set(key, m);
   return m;
 }
+// Шерсть одного цвета (для деталей без окраски вершин: головы, тела монстров)
+export function furShellSolid(k, color) {
+  const key = 'shellS' + color + k.toFixed(3);
+  if (matCache.has(key)) return matCache.get(key);
+  const m = shellMat(k, 0.3).clone();
+  m.vertexColors = false;
+  m.color = new THREE.Color(color);
+  m.onBeforeCompile = shellMat(k, 0.3).onBeforeCompile;
+  m.customProgramCacheKey = () => 'quadshellS';
+  matCache.set(key, m);
+  return m;
+}
 function eyeMatQ(c) {
   const k = 'eye' + c;
   if (!matCache.has(k)) matCache.set(k, new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.08, clearcoat: 1, emissive: c, emissiveIntensity: 0.15 }));

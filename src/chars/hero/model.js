@@ -220,6 +220,7 @@ export class HeroModel extends Humanoid {
 
   // Живое лицо: взгляд перескакивает с точки на точку, периодическое моргание
   animateFace(dt) {
+    if (this.noFace) return;
     this.eyeT -= dt;
     if (this.eyeT < 0) {
       this.eyeT = 0.5 + Math.random() * 2.2;
@@ -240,6 +241,7 @@ export class HeroModel extends Humanoid {
   updateBodyRegions() {
     const covered = new Set();
     for (const slot in this.equipped) for (const r of this.equipped[slot].covers || []) covered.add(r);
+    for (const r of this.hideRegions || []) covered.add(r);
     this.bodyMesh.material = this.regionNames.map(r => covered.has(r) ? this.hiddenMat : this.skinMaterial);
   }
 
