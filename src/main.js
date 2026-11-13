@@ -8,6 +8,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { shockPassDef } from './fx/feel.js';
 import { World } from './world/world.js';
 import { Game } from './game/game.js';
 import { FX } from './fx/particles.js';
@@ -89,6 +90,10 @@ class App {
           gl_FragColor = vec4(clamp(c.rgb, 0.0, 16.0), c.a);
         }`,
     });
+    // ударная волна искажения от больших взрывов (включается только на время волны)
+    this.shockPass = new ShaderPass(shockPassDef());
+    this.shockPass.enabled = false;
+    this.composer.addPass(this.shockPass);
     this.composer.addPass(this.sanitize);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
@@ -190,6 +195,7 @@ class App {
     const w = window.innerWidth, h = window.innerHeight;
     this.renderer.setSize(w, h);
     this.composer.setSize(w, h);
+    if (this.shockPass) this.shockPass.uniforms.uAsp.value = w / Math.max(1, h);
     this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
     if (this.menuCam) { this.menuCam.aspect = w / h; this.menuCam.updateProjectionMatrix(); }
     FX.setScale(h * this.renderer.getPixelRatio() * 0.5 / Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
@@ -340,6 +346,7 @@ class App {
     this.renderPass.camera = this.camera;
     this.game = new Game(this);
     this.game.start(data, save);
+    this.game.feel.shock = this.shockPass;
     this.resize();
     try {
       const moon = this.world.moon, mv = moon.visible;

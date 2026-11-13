@@ -6,6 +6,7 @@ import { boneMat } from '../chars/materials.js';
 import { fireMat, energyMat } from '../fx/effects.js';
 import '../fx/vfx.js';
 import { SK, makeCtx } from './skillfx.js';
+import { schoolOf, skillWeight } from '../fx/feel.js';
 
 // Умения по области заодно раскидывают предметы с физикой
 function hitArea(game, x, z, r) {
@@ -362,6 +363,11 @@ export function castSkill(game, P, skill, target) {
   const range = (skill.range || C.range) + (P.rangeAdd || 0);
   const { K, c, anim, handPos } = skillCtx(game, P, skill, target);
   P.model.playAction(anim, P.hasteMul);
+  // звук стихии при применении; удар — при первом попадании
+  const school = schoolOf(skill), weight = skillWeight(skill);
+  game.ui.sound('cast_' + school);
+  let firstHit = true;
+  const AOE = skill.type === 'aoeSelf' || skill.type === 'aoeTarget' || skill.type === 'charge' || skill.type === 'line' || skill.type === 'rain' || skill.type === 'pull';
   const T = c.T;                         // момент удара по анимации
   if (K.cast) K.cast(c);
   // зрелище: своя постановка умения, иначе общая библиотека
@@ -373,7 +379,18 @@ export function castSkill(game, P, skill, target) {
     if (!t || !t.alive) return 0;
     let m = mul;
     if (skill.execute && t.hp / t.maxHp < skill.execute) m *= 2;
-    const d = game.combat.dealDamage(P, t, dmgOf(m), { lifesteal: skill.lifesteal || 0, ...extra });
+    const d = game.combat.dealDamage(P, t, dmgOf(m), { lifesteal: skill.lifesteal || 0, power: weight, ...extra });
+    if (firstHit && t.center) {
+      // первое попадание умения: стоп-кадр, толчок камеры, рывок приближения, звук удара
+      firstHit = false;
+      const tc = t.center();
+      const dir = tc.clone().sub(game.camera.position); dir.y = 0; dir.normalize();
+      game.feel.hitStop(0.03 + weight * 0.08);
+      game.feel.fovPunch(0.25 + weight * 0.55);
+      game.feel.camKick(dir, 0.06 + weight * 0.22);
+      if (AOE && weight > 0.35) game.feel.screenShock(skill.type === 'aoeSelf' || skill.type === 'charge' ? P.center() : tc, 0.6 + weight);
+      game.ui.sound('hit_' + school);
+    }
     if (skill.stun) t.stunT = Math.max(t.stunT, skill.stun);
     if (skill.root) t.rootT = Math.max(t.rootT, skill.root);
     if (skill.slow) t.slowT = Math.max(t.slowT, skill.slow);

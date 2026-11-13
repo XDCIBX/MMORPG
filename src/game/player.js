@@ -274,7 +274,7 @@ export class Player extends Entity {
     this.gcd = 0.5;
     this.atkTimer = Math.max(this.atkTimer, 0.6);
     castSkill(this.game, this, s, target);
-    this.game.ui.sound('skill');
+    // звук умения — по стихии, в castSkill
   }
 
   // ---------- Опыт ----------

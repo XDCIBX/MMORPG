@@ -91,14 +91,17 @@ export class UI {
         g.gain.setValueAtTime(vol, t + delay); g.gain.exponentialRampToValueAtTime(0.0001, t + delay + d);
         o.connect(g); g.connect(ac.destination); o.start(t + delay); o.stop(t + delay + d + 0.02);
       };
-      const noise = (d, vol = 0.08, freq = 1200) => {
-        const b = ac.createBuffer(1, ac.sampleRate * d, ac.sampleRate), data = b.getChannelData(0);
+      const noise = (d, vol = 0.08, freq = 1200, type = 'bandpass', f2 = null, delay = 0, q = 1) => {
+        const b = ac.createBuffer(1, Math.max(1, Math.floor(ac.sampleRate * d)), ac.sampleRate), data = b.getChannelData(0);
         for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
         const s = ac.createBufferSource(); s.buffer = b;
-        const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq;
+        const f = ac.createBiquadFilter(); f.type = type; f.frequency.setValueAtTime(freq, t + delay); f.Q.value = q;
+        if (f2) f.frequency.exponentialRampToValueAtTime(f2, t + delay + d);
         const g = ac.createGain(); g.gain.value = vol;
-        s.connect(f); f.connect(g); g.connect(ac.destination); s.start();
+        s.connect(f); f.connect(g); g.connect(ac.destination); s.start(t + delay);
       };
+      // треск: короткие щелчки (огонь, кости)
+      const crackle = (d, n, vol, freq) => { for (let i = 0; i < n; i++) noise(0.012, vol * (0.5 + Math.random()), freq * (0.7 + Math.random() * 0.6), 'bandpass', null, Math.random() * d, 3); };
       switch (name) {
         case 'hit': noise(0.12, 0.12, 900); tone(140, 0.1, 'square', 0.03, 80); break;
         case 'hurt': noise(0.1, 0.06, 400); break;
@@ -113,6 +116,26 @@ export class UI {
         case 'error': tone(200, 0.12, 'square', 0.03); break;
         case 'boss': tone(80, 1.2, 'sawtooth', 0.06, 40); break;
         case 'click': tone(900, 0.04, 'square', 0.02); break;
+        // ---- умения: применение ----
+        case 'cast_steel': noise(0.22, 0.14, 500, 'bandpass', 3200, 0, 1.4); break;                       // свист клинка
+        case 'cast_bow': tone(240, 0.14, 'triangle', 0.07, 150); noise(0.05, 0.08, 2600, 'highpass'); noise(0.18, 0.05, 1500, 'bandpass', 4000, 0.03, 2); break; // тетива
+        case 'cast_fire': noise(0.45, 0.12, 300, 'lowpass', 1400); crackle(0.4, 10, 0.05, 2500); break;    // рёв пламени
+        case 'cast_frost': tone(1800, 0.25, 'sine', 0.03, 2600); tone(2700, 0.2, 'sine', 0.02, 3400, 0.05); noise(0.3, 0.05, 6000, 'highpass'); break;
+        case 'cast_storm': noise(0.3, 0.07, 3000, 'highpass'); tone(120, 0.3, 'sawtooth', 0.03, 240); break;
+        case 'cast_holy': [880, 1320, 1760].forEach((f, i) => tone(f, 0.7, 'sine', 0.035, null, i * 0.04)); break;
+        case 'cast_shadow': tone(110, 0.5, 'sawtooth', 0.035, 70); tone(117, 0.5, 'sawtooth', 0.03, 74); noise(0.5, 0.05, 900, 'bandpass', 300, 0, 3); break;
+        case 'cast_death': tone(70, 0.6, 'sawtooth', 0.04, 55); crackle(0.35, 8, 0.05, 1800); break;
+        case 'cast_nature': noise(0.35, 0.07, 1200, 'bandpass', 500, 0, 0.8); tone(330, 0.2, 'triangle', 0.03, 440); break;
+        // ---- умения: попадание ----
+        case 'hit_steel': noise(0.09, 0.2, 1800, 'bandpass', 600, 0, 1.2); tone(160, 0.18, 'square', 0.05, 60); noise(0.25, 0.08, 400, 'lowpass'); break;
+        case 'hit_bow': noise(0.05, 0.16, 1500); tone(190, 0.1, 'square', 0.04, 90); break;
+        case 'hit_fire': noise(0.6, 0.22, 900, 'lowpass', 120); tone(70, 0.5, 'sine', 0.12, 35); crackle(0.5, 12, 0.06, 2000); break; // взрыв
+        case 'hit_frost': noise(0.25, 0.12, 4000, 'highpass'); [2200, 3100, 2600].forEach((f, i) => tone(f, 0.12, 'triangle', 0.03, null, i * 0.035)); break; // треск льда
+        case 'hit_storm': noise(0.08, 0.25, 5000, 'highpass'); noise(0.5, 0.12, 300, 'lowpass', 80, 0.05); tone(60, 0.5, 'sine', 0.1, 30, 0.04); break; // раскат
+        case 'hit_holy': [1046, 1568, 2093].forEach((f, i) => tone(f, 0.9, 'sine', 0.04, null, i * 0.03)); noise(0.3, 0.08, 300, 'lowpass'); break;
+        case 'hit_shadow': tone(90, 0.45, 'sawtooth', 0.06, 40); noise(0.4, 0.1, 600, 'lowpass', 100); break;
+        case 'hit_death': crackle(0.25, 12, 0.08, 1500); tone(90, 0.3, 'square', 0.04, 50); break;
+        case 'hit_nature': noise(0.3, 0.1, 700, 'bandpass', 250, 0, 0.8); crackle(0.25, 6, 0.06, 1200); break;
       }
     } catch (e) { /* без звука */ }
   }
@@ -371,8 +394,11 @@ export class UI {
       if (this.tmpV.z > 1) { f.e.style.opacity = 0; continue; }
       const k = f.t / f.life;
       const x = (this.tmpV.x * 0.5 + 0.5) * W + f.dx * k, y = (-this.tmpV.y * 0.5 + 0.5) * H - 70 * k - 20;
-      const sc = f.crit ? (k < 0.15 ? 1.6 - k * 4 : 1) : 1;
-      f.e.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -50%) scale(${sc.toFixed(2)})`;
+      // крит «выстреливает» с пружинкой и дрожит; обычный удар — короткий толчок
+      const p = Math.min(1, f.t / 0.32);
+      const sc = f.crit ? 1 + 1.4 * Math.exp(-p * 5) * Math.cos(p * 11) : (f.t < 0.1 ? 1.3 - f.t * 3 : 1);
+      const jx = f.crit && f.t < 0.2 ? (Math.random() - 0.5) * 6 : 0, jy = f.crit && f.t < 0.2 ? (Math.random() - 0.5) * 6 : 0;
+      f.e.style.transform = `translate(${(x + jx).toFixed(1)}px, ${(y + jy).toFixed(1)}px) translate(-50%, -50%) scale(${sc.toFixed(2)})`;
       f.e.style.opacity = k > 0.7 ? (1 - (k - 0.7) / 0.3).toFixed(2) : '1';
     }
   }

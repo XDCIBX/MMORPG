@@ -1,6 +1,7 @@
 // Монстры, боссы и призванные союзники: ИИ, способности, добыча, появление.
 import { shadowLOD } from '../chars/optimize.js';
 import * as THREE from 'three';
+import { Feel } from '../fx/feel.js';
 import { Entity } from './entity.js';
 import { buildCreature } from '../chars/creatures.js';
 import { MOB_TYPES, SPAWNS, BOSSES, mobHp, mobDmg, mobArmor } from '../data/mobs.js';
@@ -179,9 +180,16 @@ export class Mob extends Entity {
         if (dd < min && dd > 0.001) { this.pos.x += dx / dd * (min - dd) * 0.5; this.pos.z += dz / dd * (min - dd) * 0.5; }
       }
     }
+    if (this.knock && this.knock.t > 0) {
+      const k = Math.min(dt, this.knock.t) / 0.18;
+      this.pos.x += this.knock.x * k; this.pos.z += this.knock.z * k;
+      this.knock.t -= dt;
+      g.world.collision.resolve(this.pos, this.radius * 0.8);
+    }
     this.pos.y = this.def.model === 'wraith' || this.def.model === 'elemental' ? Math.max(0.2, g.world.standY(this.pos.x, this.pos.z)) : Math.max(g.world.standY(this.pos.x, this.pos.z), -1.4);
     if (this.model) {
       this.model.update(dt, { speed: Math.abs(speed) > 0.01 ? speed / this.scale : 0, runSpeed: 6, howl: this.howling > 0, breathing: this.breathing > 0 });
+      if (this.alive) Feel.applyJolt(this.model, dt);
       if (this.howling > 0) this.howling -= dt;
       if (this.breathing > 0) this.breathing -= dt;
       this.syncModel();

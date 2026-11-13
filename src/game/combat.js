@@ -52,6 +52,12 @@ export class Combat {
       if (absorbed && !dmg) g.ui.floatText(p, 'Поглощено', '#9ad0ff', false);
       else g.ui.floatText(p, (crit ? '' : '') + dmg + (crit ? '!' : ''), color, crit, isPlayerTgt);
     }
+    // реакция на удар игрока: вздрагивание, отбрасывание, стоп-кадр на крите
+    if (isPlayerSrc && tgt !== g.player && dmg > 0 && !opts.dot && g.feel) {
+      const pw = (opts.power || 0.35) * (crit ? 1.5 : 1);
+      g.feel.react(tgt, src, pw);
+      if (crit) g.feel.hitStop(0.045 + pw * 0.04);
+    }
     // угроза
     if (tgt.onDamaged) tgt.onDamaged(src, dmg);
     // вампиризм

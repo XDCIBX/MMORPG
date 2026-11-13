@@ -8,6 +8,7 @@ import { QuestLog } from './quests.js';
 import { Combat } from './combat.js';
 import { Effects } from '../fx/effects.js';
 import { furLOD } from '../chars/beasts.js';
+import { Feel } from '../fx/feel.js';
 import { FX } from '../fx/particles.js';
 import { UI } from '../ui/ui.js';
 import { CITIES, SECRET_SHOPS } from '../data/world.js';
@@ -36,6 +37,8 @@ export class Game {
   start(data, saved = null) {
     this.effects = new Effects(this.scene);
     this.effects.camera = this.camera;
+    this.feel = new Feel(this);
+    this.effects.feel = this.feel; this.effects.game = this;
     this.effects.lowFx = this.quality < 1;     // на слабых устройствах без призрачных двойников
     this.combat = new Combat(this);
     this.discovered = saved ? saved.discovered : { cities: ['c1'], shops: [] };
@@ -322,10 +325,14 @@ export class Game {
     }
     this.camera.position.copy(pos);
     this.camera.lookAt(c.look);
+    this.feel.applyCamera(this.camera, dt);
   }
 
   // ---------- Главный цикл ----------
   update(dt) {
+    // стоп-кадр в момент тяжёлого попадания
+    this.feel.update(dt);
+    dt *= this.feel.timeScale(dt);
     this.time += dt;
     for (let i = this.timers.length - 1; i >= 0; i--) {
       if (this.timers[i].t <= this.time) { const f = this.timers[i].fn; this.timers.splice(i, 1); try { f(); } catch (e) { console.error(e); } }

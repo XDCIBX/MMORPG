@@ -148,7 +148,7 @@ button { font-family: var(--ui); }
 /* Плавающие надписи и таблички */
 #floaters, #labels { position: absolute; inset: 0; pointer-events: none !important; overflow: hidden; }
 .ft { position: absolute; font-weight: 900; font-size: 22px; white-space: nowrap; text-shadow: 0 0 3px #000, 0 2px 2px #000, 0 0 8px rgba(0,0,0,0.6); transform: translate(-50%, -50%); will-change: transform, opacity; font-family: var(--ui); }
-.ft.crit { font-size: 34px; }
+.ft.crit { font-size: 36px; letter-spacing: 1px; text-shadow: 0 0 3px #000, 0 2px 2px #000, 0 0 12px rgba(255,120,20,0.9), 0 0 24px rgba(255,60,0,0.6); }
 .ft.small { font-size: 16px; }
 .plate { position: absolute; transform: translate(-50%, -100%); text-align: center; white-space: nowrap; }
 .plate .n { font-size: 13px; font-weight: 700; text-shadow: 0 0 3px #000, 0 1px 2px #000; }

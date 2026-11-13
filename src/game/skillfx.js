@@ -171,6 +171,7 @@ export const SK = {
       c.E.nova(g, '#ff9a40', 3.6, 0.5, '#fff0c0'); c.E.groundCrack(g, '#ff8030', 1.8, 1.6);
       c.E.spark(p, '#ffb040', { n: 18, speed: 9, tex: 'spark', flare: 3 });
       eruptRocks(c, g, 10, 1.6); c.E.dustRing(g, 2.6, '#9a8468', 14);
+      c.E.feel.scorch(g, 1.5, '#2a2218', 6);
       c.game.shake(0.32);
     },
   },
@@ -210,6 +211,7 @@ export const SK = {
       for (let i = 0; i < 7; i++) { const a = i / 7 * TAU + R() * 0.3; c.after(i * 0.02, () => c.E.fissure(p.clone(), V(Math.cos(a), 0, Math.sin(a)), r, '#ff9a40', sy)); }
       for (let k = 1; k <= 3; k++) c.after(k * 0.09, () => { for (let i = 0; i < 6; i++) { const a = R() * TAU, d = r * k / 3 * (0.7 + R() * 0.3); const q = V(p.x + Math.cos(a) * d, 0, p.z + Math.sin(a) * d); q.y = sy(q.x, q.z); eruptRocks(c, q, 5, 0.8); FX.emit({ x: q.x, y: q.y + 0.3, z: q.z, vy: 1.5, life: 1.1, size: 1.8, color: '#8a7860', additive: false, alpha: 0.45, grow: 1.4, tex: 'smoke' }); } });
       c.E.dustRing(p, r * 0.9, '#9a8468', 28);
+      c.E.feel.scorch(p, r * 0.6, '#2a2218', 8);
       c.game.shake(0.85);
     },
     each(c, e) { const g = c.ground(e.pos); eruptRocks(c, g, 6, 0.7); c.E.spark(e.center(), '#ffb060', { n: 6, ring: false, light: false, flare: 1.6 }); },
@@ -434,6 +436,7 @@ export const SK = {
       FX.burst(p.x, p.y, p.z, 16, { color: ['#c01020', '#700810'], speed: 6, life: 0.8, size: 0.3, gravity: 14, up: 2, additive: false, tex: 'drop' });
       c.E.pillar(g, '#ff3020', 0.7, 9, 0.45);
       eruptRocks(c, g, 8, 1.3); c.E.dustRing(g, 3, '#8a6a60', 14);
+      c.E.feel.scorch(g, 1.8, '#200404', 7, '#ff2010');
       c.E.screenFlash('#ff2010', 0.16, 0.35); c.game.shake(0.6);
     },
   },
@@ -734,6 +737,7 @@ Object.assign(SK, {
       c.E.nova(g, '#ff8030', (c.skill.splash || 5), 0.5, '#ffe0a0'); c.E.groundCrack(g, '#ff6010', 2.2, 2.4);
       FX.burst(p.x, p.y, p.z, 22, { color: ['#ffb030', '#ff6010'], speed: 11, life: 1.1, size: 0.2, gravity: 9, up: 4, tex: 'spark' });
       eruptRocks(c, g, 8, 1.4); c.E.dustRing(g, 4, '#6a5a50', 16);
+      c.E.feel.scorch(g, 2.8, '#120804', 8, '#ff6010');
       c.game.shake(0.5);
     },
   },
@@ -768,6 +772,7 @@ Object.assign(SK, {
       c.E.fireColumn(g, 0.8, 3, 0.5, ['#ff5a10', '#ffb030', '#ffe890'], false);
       FX.burst(p.x, p.y, p.z, 14, { color: ['#ffb030', '#ff6010'], speed: 9, life: 0.9, size: 0.18, gravity: 9, up: 3, tex: 'spark' });
       c.E.groundCrack(g, '#ff6010', 1.4, 1.6); c.game.shake(0.22);
+      c.E.feel.scorch(g, 1.7, '#140804', 7, '#ff5a10');
     },
   },
   // Ледяная стрела: за осколком льда вьётся снег, цель обрастает ледяными шипами
@@ -842,6 +847,7 @@ Object.assign(SK, {
       c.after(0.2, () => c.E.meteor(p, '#ff5020', () => {
         c.E.fireColumn(p, r * 0.35, 8, 1.0, ['#ff4a10', '#ffa030', '#ffe890']); c.E.nova(p, '#ff6020', r * 1.15, 0.7, '#ffe0a0');
         c.E.groundCrack(p, '#ff5010', r * 0.6, 3); eruptRocks(c, p, 18, r * 0.5); c.E.dustRing(p, r, '#5a4a40', 26);
+        c.E.feel.scorch(p, r * 0.75, '#100604', 10, '#ff4a10');
         FX.burst(p.x, p.y + 0.5, p.z, 30, { color: ['#ffb030', '#ff6010'], speed: 14, life: 1.3, size: 0.2, gravity: 9, up: 6, tex: 'spark' });
         for (let i = 0; i < 6; i++) { const a = i / 6 * TAU + R(); c.after(0.05 + R() * 0.15, () => c.E.fireColumn(c.ground(V(p.x + Math.cos(a) * r * 0.6, 0, p.z + Math.sin(a) * r * 0.6)), 0.6, 2.6, 0.9, ['#ff5a10', '#ffb030'], false)); }
         c.E.screenFlash('#ff6020', 0.22, 0.5); c.game.shake(0.7);
@@ -900,6 +906,7 @@ Object.assign(SK, {
       c.E.fireColumn(p, r * 0.22, 8, 1.0, ['#ff9a20', '#ffd060', '#ffe890']); c.E.groundCrack(p, '#ffa020', r * 0.6, 3);
       for (let i = 0; i < 8; i++) { const a = i / 8 * TAU; c.E.pillar(c.ground(V(p.x + Math.cos(a) * r * 0.7, 0, p.z + Math.sin(a) * r * 0.7)), '#ffe080', 0.4, 10, 0.6); }
       c.E.dustRing(p, r, '#7a6a50', 26); c.E.screenFlash('#ffe0a0', 0.16, 0.5);
+      c.E.feel.scorch(p, r * 0.7, '#1a1008', 10, '#ffb020');
     },
     each(c, e) { c.E.spark(e.center(), '#ffd060', { n: 8, tex: 'flame', flare: 2.4, light: false, gravity: -2 }); },
   },
@@ -1005,6 +1012,7 @@ Object.assign(SK, {
     impact(c, p) {
       const r = c.skill.radius;
       c.old.area('plague', p, r); c.E.nova(p, '#80ff40', r, 0.6, '#e0ffb0');
+      c.E.feel.scorch(p, r * 0.8, '#0e1a04', 9, '#60ff30');
       FX.burst(p.x, p.y + 0.4, p.z, 24, { color: ['#70ff40', '#b0ff60', '#308010'], speed: 9, life: 0.9, size: 0.3, gravity: 12, up: 5, tex: 'drop' });
       for (let i = 0; i < 5; i++) c.after(0.2 + i * 0.25, () => { const a = R() * TAU, d = R() * r * 0.7; skullPop(c, V(p.x + Math.cos(a) * d, p.y + 0.8, p.z + Math.sin(a) * d), '#a0ff50', 1.0 + R() * 0.6); });
       c.E.add(null, 2.6, () => { if (R() < 0.5) { const a = R() * TAU, d = R() * r; FX.emit({ x: p.x + Math.cos(a) * d, y: p.y + 0.15, z: p.z + Math.sin(a) * d, vy: 0.9 + R(), life: 0.9, size: 0.2 + R() * 0.3, color: '#b0ff60', tex: 'ring' }); } });
