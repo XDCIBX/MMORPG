@@ -4,6 +4,8 @@ import { FX } from '../fx/particles.js';
 import { WEAPON_ANIM } from '../chars/gear.js';
 import { boneMat } from '../chars/materials.js';
 import { fireMat, energyMat } from '../fx/effects.js';
+import '../fx/vfx.js';
+import { SK, makeCtx } from './skillfx.js';
 
 // Умения по области заодно раскидывают предметы с физикой
 function hitArea(game, x, z, r) {
@@ -332,19 +334,39 @@ export function levelUpFx(game, ent) {
 }
 
 // ---------- Исполнение умения ----------
+function skillCtx(game, P, skill, target) {
+  const K = SK[skill.id] || {};
+  const anim = K.anim || skill.anim || WEAPON_ANIM[P.model.weaponType || 'none'];
+  const handPos = () => {
+    const v = new THREE.Vector3();
+    if (P.model.weaponObj && (P.model.hold === 'staff')) { P.model.weaponObj.localToWorld(v.set(0, 1.15, 0)); return v; }
+    return P.model.worldPos(P.model.hold === 'bow' ? 'gripL' : 'gripR', v);
+  };
+  const c = makeCtx(game, P, skill, target, handPos, anim);
+  c.old = { hit: (n, p, o) => hitFx(game, n, p, o), area: (n, p, r, col) => areaFx(game, n, p, r, col), self: (n) => selfFx(game, n, P, skill.color) };
+  c.point = target ? target.pos.clone() : P.pos.clone().add(V(Math.sin(P.yaw) * 10, 0, Math.cos(P.yaw) * 10));
+  return { K, c, anim, handPos };
+}
+// Подготовка во время долгого каста (метка на цели, печать на земле)
+export function precastSkill(game, P, skill, target, dur) {
+  const { K, c } = skillCtx(game, P, skill, target);
+  if (K.precast) K.precast(c, dur);
+}
+
 export function castSkill(game, P, skill, target) {
   const C = P.C;
   const E = game.effects;
   const ap = P.ap;
   const dmgOf = (mul) => ap * mul;
   const range = (skill.range || C.range) + (P.rangeAdd || 0);
-  const anim = skill.anim || WEAPON_ANIM[P.model.weaponType || 'none'];
+  const { K, c, anim, handPos } = skillCtx(game, P, skill, target);
   P.model.playAction(anim, P.hasteMul);
-  const handPos = () => {
-    const v = new THREE.Vector3();
-    if (P.model.weaponObj && (P.model.hold === 'staff')) { P.model.weaponObj.localToWorld(v.set(0, 1.15, 0)); return v; }
-    return P.model.worldPos(P.model.hold === 'bow' ? 'gripL' : 'gripR', v);
-  };
+  const T = c.T;                         // момент удара по анимации
+  if (K.cast) K.cast(c);
+  // зрелище: своя постановка умения, иначе общая библиотека
+  const fxHit = (pos, o = {}) => { if (K.hit) K.hit(c, pos, o); else hitFx(game, skill.fx, pos, o); };
+  const fxEach = (e) => { if (K.each) K.each(c, e); else hitFx(game, 'default', e.center(), { color: skill.color }); };
+  const fxSelf = () => { if (K.self) K.self(c); else selfFx(game, skill.fx, P, skill.color); };
   const tgtCenter = (t) => () => (t && t.alive ? t.center() : null);
   const apply = (t, mul, extra = {}) => {
     if (!t || !t.alive) return 0;
@@ -360,49 +382,61 @@ export function castSkill(game, P, skill, target) {
     if (t.aggro) t.aggro(P);
     return d;
   };
-  const point = () => target ? target.pos.clone() : P.pos.clone().add(V(Math.sin(P.yaw) * 10, 0, Math.cos(P.yaw) * 10));
-  const strikeDelay = 0.26 / P.hasteMul;
   switch (skill.type) {
     case 'melee': {
-      game.schedule(strikeDelay + (anim === 'slam' ? 0.16 : 0.06), () => {
+      game.schedule(T, () => {
         if (!target || !target.alive) return;
-        const c = target.center();
+        const cpos = target.center();
         const yaw = P.yaw;
-        if (skill.fx !== 'impact') E.crescent(P.pos.clone().setY(P.pos.y + 1.1).add(V(Math.sin(yaw) * 0.6, 0, Math.cos(yaw) * 0.6)), yaw, skill.color, 2.4, { dur: 0.3, travel: 1.4, roll: anim === 'slash2' ? -0.6 : 0.6 });
-        apply(target, skill.dmg);
-        hitFx(game, skill.fx, c, { target, stun: skill.stun, yaw });
-        game.shake(0.2);
+        if (K.swing) K.swing(c, cpos, yaw);
+        else if (skill.fx !== 'impact') E.crescent(P.pos.clone().setY(P.pos.y + 1.1).add(V(Math.sin(yaw) * 0.6, 0, Math.cos(yaw) * 0.6)), yaw, skill.color, 2.4, { dur: 0.3, travel: 1.4, roll: anim === 'slash2' ? -0.6 : 0.6 });
+        game.schedule(0.05, () => {
+          if (!target.alive) return;
+          apply(target, skill.dmg);
+          fxHit(target.center(), { target, stun: skill.stun, yaw });
+          if (!K.hit) game.shake(0.2);
+          if (game.physics) game.physics.blast(target.pos.x, target.pos.z, 2.2, 5);
+        });
       });
       break;
     }
     case 'proj': {
       if (skill.projectile === 'drain') {
         // жгуты жизненной силы тянутся от врага к заклинателю
-        game.schedule(strikeDelay, () => {
+        game.schedule(T, () => {
           if (!target || !target.alive) return;
           E.drainBeam(() => (target.alive ? target.center() : null), () => handPos(), skill.color, 1.0);
-          game.schedule(0.35, () => { apply(target, skill.dmg); hitFx(game, 'drain', target.center(), { to: () => P.center() }); E.sphere(P.pos, '#ff3060', 1.1, 0.6, P.model.root); });
+          if (K.drain) K.drain(c, target);
+          game.schedule(0.35, () => {
+            apply(target, skill.dmg);
+            if (K.hit) K.hit(c, target.center(), { target }); else hitFx(game, 'drain', target.center(), { to: () => P.center() });
+            E.sphere(P.pos, '#ff3060', 1.1, 0.6, P.model.root);
+          });
         });
         break;
       }
-      game.schedule(anim === 'bow' ? 0.42 / P.hasteMul : strikeDelay, () => {
+      game.schedule(T, () => {
         if (!target || !target.alive) return;
         if (skill.id === 'n_curse') game.schedule(0.45, () => target.alive && E.sigil(() => (target.alive ? target.center().setY(target.headY ? target.headY() + 0.6 : target.pos.y + 2.5) : null), '#90ff40', skill.curse.dur));
         const from = handPos();
-        const speed = skill.projectile === 'fireball' ? 26 : skill.projectile === 'hammer' ? 30 : 42;
+        const po = K.proj || {};
+        const speed = po.speed || (skill.projectile === 'fireball' ? 26 : skill.projectile === 'hammer' ? 30 : 42);
+        if (K.launch) K.launch(c, from);
         E.projectile(skill.projectile, from, tgtCenter(target), speed, (hp) => {
           apply(target, skill.dmg);
           if (skill.splash) for (const e of hitArea(game, hp.x, hp.z, skill.splash)) if (e !== target) apply(e, skill.dmg * 0.6);
-          hitFx(game, skill.fx, hp, { to: () => P.center(), size: skill.splash ? 1.5 : 1 });
-        });
+          fxHit(hp, { target, to: () => P.center(), size: skill.splash ? 1.5 : 1 });
+        }, po);
       });
       break;
     }
     case 'multi': {
-      game.schedule(0.42 / P.hasteMul, () => {
+      game.schedule(T, () => {
         const from = handPos();
         const baseDir = target ? Math.atan2(target.pos.x - P.pos.x, target.pos.z - P.pos.z) : P.yaw;
         const enemies = game.mobs.active.filter(e => e.alive && e.distTo(P) < range);
+        const po = K.proj || {};
+        if (K.launch) K.launch(c, from);
         for (let i = 0; i < skill.count; i++) {
           const a = baseDir + (i - (skill.count - 1) / 2) * (skill.spread / (skill.count - 1)) * 2;
           let best = null, bd = 1e9;
@@ -414,23 +448,32 @@ export function castSkill(game, P, skill, target) {
           if (i === Math.floor(skill.count / 2) && target) best = target;
           const tgtFn = best ? tgtCenter(best) : (() => { const pt = P.pos.clone().add(V(Math.sin(a) * range, 1.2, Math.cos(a) * range)); return () => pt; })();
           const b = best;
-          E.projectile(skill.projectile, from.clone(), tgtFn, 44, (hp) => { if (b) { apply(b, skill.dmg); hitFx(game, skill.fx, hp); } });
+          E.projectile(skill.projectile, from.clone(), tgtFn, po.speed || 44, (hp) => { if (b) { apply(b, skill.dmg); fxHit(hp, { target: b }); } }, po);
         }
       });
       break;
     }
     case 'aoeSelf': {
-      game.schedule(skill.anim === 'slam' ? 0.45 / P.hasteMul : 0.3 / P.hasteMul, () => {
-        areaFx(game, skill.fx, P.pos, skill.radius, skill.color);
+      game.schedule(T, () => {
+        if (K.area) K.area(c, P.pos.clone(), skill.radius); else areaFx(game, skill.fx, P.pos, skill.radius, skill.color);
         for (const e of hitArea(game, P.pos.x, P.pos.z, skill.radius)) {
-          apply(e, skill.dmg); hitFx(game, 'slash', e.center());
-          if (skill.fx === 'harvest') { const c = e.center(); for (let k = 0; k < 10; k++) game.schedule(0.2 + k * 0.04, () => { const to = P.center(); const f = c.clone().lerp(to, k / 10); FX.emit({ x: f.x, y: f.y + Math.sin(k) * 0.3, z: f.z, vx: (to.x - c.x) * 0.8, vy: 0.5, vz: (to.z - c.z) * 0.8, life: 0.5, size: 0.45, color: '#7af8ff' }); }); }
+          apply(e, skill.dmg);
+          if (K.each) K.each(c, e); else hitFx(game, 'slash', e.center());
         }
       });
       break;
     }
     case 'aoeTarget': {
-      const p = point();
+      const p = c.point;
+      if (K.cast) {
+        // постановка уже запущена в K.cast; урон — в момент удара
+        game.schedule(K.delay || 0.5, () => {
+          const g = p.clone().setY(game.world.standY(p.x, p.z));
+          if (K.impact) K.impact(c, g);
+          for (const e of hitArea(game, p.x, p.z, skill.radius)) { apply(e, skill.dmg); fxEach(e); }
+        });
+        break;
+      }
       const delay = skill.fx === 'meteor' ? 0 : skill.fx === 'rockfall' ? 0.55 : skill.fx === 'phantomblades' ? 0.45 : 0.35;
       if (skill.fx === 'meteor') {
         areaFx(game, 'meteor', p, skill.radius);
@@ -441,23 +484,25 @@ export function castSkill(game, P, skill, target) {
       } else {
         game.schedule(0.15, () => areaFx(game, skill.fx, p.clone().setY(game.world.standY(p.x, p.z)), skill.radius, skill.color));
         game.schedule(delay + 0.15, () => {
-          for (const e of hitArea(game, p.x, p.z, skill.radius)) { apply(e, skill.dmg); hitFx(game, 'default', e.center(), { color: skill.color }); }
+          for (const e of hitArea(game, p.x, p.z, skill.radius)) { apply(e, skill.dmg); fxEach(e); }
         });
       }
       break;
     }
     case 'rain': case 'pull': {
-      const p = skill.self ? null : point();
+      const p = skill.self ? null : c.point;
       const waves = skill.waves || 3;
+      const t0 = K.waveStart || 0.35;
       for (let w = 0; w < waves; w++) {
-        game.schedule(0.35 + w * 0.45, () => {
-          const c = p || P.pos.clone();
-          c.y = game.world.standY(c.x, c.z);
-          areaFx(game, skill.fx, c, skill.radius, skill.color);
-          for (const e of hitArea(game, c.x, c.z, skill.radius)) {
+        game.schedule(t0 + w * 0.45, () => {
+          const cc = p ? p.clone() : P.pos.clone();
+          cc.y = game.world.standY(cc.x, cc.z);
+          if (K.area) K.area(c, cc, skill.radius, w); else areaFx(game, skill.fx, cc, skill.radius, skill.color);
+          for (const e of hitArea(game, cc.x, cc.z, skill.radius)) {
             apply(e, skill.dmg / waves, { noCrit: w > 0 });
+            if (K.each) K.each(c, e);
             if (skill.type === 'pull' && e.canMove && !e.isBoss) {
-              const dx = c.x - e.pos.x, dz = c.z - e.pos.z, d = Math.hypot(dx, dz);
+              const dx = cc.x - e.pos.x, dz = cc.z - e.pos.z, d = Math.hypot(dx, dz);
               if (d > 0.8) { e.pos.x += dx / d * Math.min(d - 0.6, 2.5); e.pos.z += dz / d * Math.min(d - 0.6, 2.5); }
             }
           }
@@ -466,42 +511,28 @@ export function castSkill(game, P, skill, target) {
       break;
     }
     case 'line': {
-      game.schedule(skill.anim === 'bow' ? 0.42 / P.hasteMul : strikeDelay + 0.1, () => {
+      game.schedule(T, () => {
         const dir = target ? V(target.pos.x - P.pos.x, 0, target.pos.z - P.pos.z).normalize() : V(Math.sin(P.yaw), 0, Math.cos(P.yaw));
         const len = skill.range;
         const from = P.pos.clone().setY(P.pos.y + 1.2);
         const to = from.clone().addScaledVector(dir, len);
         const hit = game.combat.enemiesInLine('player', P.pos, dir, len, skill.width);
-        if (skill.fx === 'fissure') {
+        if (game.physics) for (let i = 1; i <= 4; i++) game.physics.blast(P.pos.x + dir.x * len * i / 4, P.pos.z + dir.z * len * i / 4, skill.width + 1, 6);
+        if (K.line) K.line(c, from, to, dir, len);
+        else if (skill.fx === 'fissure') {
           E.fissure(P.pos.clone(), dir, len, '#ff8a30', (x, z) => game.world.standY(x, z));
           E.shockwave(P.pos.clone(), '#d09a50', 2.5, 0.4, true);
           game.shake(0.5);
-        } else if (skill.fx === 'piercearrow') {
-          E.projectile('bigarrow', from, () => to, 70, () => {});
-          E.beam(from, to, '#e8f0ff', 0.08, 0.4);
-          for (let i = 1; i <= 4; i++) game.schedule(i * 0.06, () => {
-            const rp = from.clone().addScaledVector(dir, len * i / 5);
-            const ring = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.05, 6, 32), energyMat('#d8e8ff', { scale: 3, speed: 4 }));
-            ring.position.copy(rp); ring.lookAt(rp.clone().add(dir));
-            E.add(ring, 0.4, (dt, k) => { ring.scale.setScalar(1 + k * 2); ring.material.uniforms.uAlpha.value = 1 - k; });
-          });
-        } else if (skill.fx === 'scytheline') {
-          E.flyingScythe(from.clone(), to.clone(), '#30e0c8', 0.55);
-          for (let i = 0; i < 6; i++) game.schedule(i * 0.07, () => E.slashArc(from.clone().addScaledVector(dir, 3 + i * (len - 3) / 6), Math.atan2(dir.x, dir.z), '#30d0c0', 3, 0.35, 0));
         } else {
           E.beam(from, to, skill.color, 0.5, 0.6);
-          const len2 = from.distanceTo(to);
-          const bm = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, len2, 20, 1, true).rotateX(Math.PI / 2), energyMat(skill.color, { scale: 8, speed: 5 }));
-          bm.position.copy(from).lerp(to, 0.5); bm.lookAt(to);
-          E.add(bm, 0.6, (dt, k) => { bm.scale.set(1 - k * 0.7, 1 - k * 0.7, 1); bm.material.uniforms.uAlpha.value = 1 - k; });
           E.godRays(to.clone().setY(game.world.standY(to.x, to.z)), skill.color, 0.8, 1.5);
         }
-        for (const e of hit) { apply(e, skill.dmg); hitFx(game, 'default', e.center(), { color: skill.color }); }
+        for (const e of hit) { apply(e, skill.dmg); fxEach(e); }
       });
       break;
     }
     case 'chain': {
-      game.schedule(skill.anim === 'bow' ? 0.42 / P.hasteMul : strikeDelay, () => {
+      game.schedule(T, () => {
         if (!target || !target.alive) return;
         const hitList = [target];
         let cur = target;
@@ -512,24 +543,25 @@ export function castSkill(game, P, skill, target) {
           hitList.push(best); cur = best;
         }
         let from = handPos();
-        let mul = skill.dmg;
-        if (skill.id === 'a_storm' && hitList[0]) E.skyBolt(hitList[0].pos.clone(), '#90c8ff');
+        const mul = skill.dmg;
+        if (K.chainStart) K.chainStart(c, hitList);
+        else if (skill.id === 'a_storm' && hitList[0]) E.skyBolt(hitList[0].pos.clone(), '#90c8ff');
         hitList.forEach((e, i) => {
           const f = from.clone();
           game.schedule(i * 0.12, () => {
             if (!e.alive) return;
-            E.lightning(f, e.center(), '#a0d0ff', 0.3);
+            if (K.hop) K.hop(c, i ? (hitList[i - 1].alive ? hitList[i - 1].center() : f) : handPos(), e, i);
+            else E.lightning(f, e.center(), '#a0d0ff', 0.3);
             apply(e, mul * Math.pow(0.85, i));
           });
           from = e.center();
         });
-        void mul;
       });
       break;
     }
     case 'buff': {
-      game.schedule(0.3, () => {
-        selfFx(game, skill.fx, P, skill.color);
+      game.schedule(T, () => {
+        fxSelf();
         if (skill.buff) P.addBuff({ id: skill.id, name: skill.name, icon: skill.icon, color: skill.color, dur: skill.buff.dur, mods: { dmgMul: skill.buff.dmgMul, armorMul: skill.buff.armorMul, dmgTaken: skill.buff.dmgTaken, hasteMul: skill.buff.hasteMul, lifesteal: skill.buff.lifesteal } });
         if (skill.fx === 'avatar') {
           E.wings(P.model.j.chest, '#30ffe0', skill.buff.dur);
@@ -547,16 +579,16 @@ export function castSkill(game, P, skill, target) {
       break;
     }
     case 'heal': {
-      game.schedule(0.35, () => {
-        selfFx(game, skill.fx, P, skill.color);
+      game.schedule(T, () => {
+        fxSelf();
         game.combat.heal(P, P.maxHp * skill.heal, P);
         if (skill.shield) { P.shield = P.maxHp * skill.shield; P.shieldT = skill.dur || 10; E.sphere(P.pos, '#ffe080', 1.3, skill.dur || 10, P.model.root); }
       });
       break;
     }
     case 'shield': {
-      game.schedule(0.3, () => {
-        selfFx(game, skill.fx, P, skill.color);
+      game.schedule(T, () => {
+        fxSelf();
         P.shield = P.maxHp * skill.shield; P.shieldT = skill.dur;
       });
       break;
@@ -573,12 +605,18 @@ export function castSkill(game, P, skill, target) {
       E.add(null, 0.28, (dt, k) => {
         P.pos.x = start.x + (end.x - start.x) * k;
         P.pos.z = start.z + (end.z - start.z) * k;
-        FX.emit({ x: P.pos.x, y: P.pos.y + 0.3, z: P.pos.z, life: 0.6, size: 0.9, color: '#9a8a70', additive: false, alpha: 0.4, grow: 1 });
-        FX.emit({ x: P.pos.x, y: P.pos.y + 1, z: P.pos.z, life: 0.25, size: 0.6, color: skill.color });
+        if (K.dash) K.dash(c, k, dir);
+        else {
+          FX.emit({ x: P.pos.x, y: P.pos.y + 0.3, z: P.pos.z, life: 0.6, size: 0.9, color: '#9a8a70', additive: false, alpha: 0.4, grow: 1 });
+          FX.emit({ x: P.pos.x, y: P.pos.y + 1, z: P.pos.z, life: 0.25, size: 0.6, color: skill.color });
+        }
       }, () => {
-        if (target.alive) { apply(target, skill.dmg); hitFx(game, 'shieldflash', target.center(), { target, stun: skill.stun }); }
-        E.shockwave(P.pos.clone(), skill.color, 3.5, 0.45, true);
-        game.shake(0.45);
+        if (target.alive) {
+          apply(target, skill.dmg);
+          if (K.dashEnd) K.dashEnd(c, target, { target, stun: skill.stun }); else hitFx(game, 'shieldflash', target.center(), { target, stun: skill.stun });
+        }
+        if (!K.dashEnd) { E.shockwave(P.pos.clone(), skill.color, 3.5, 0.45, true); game.shake(0.45); }
+        if (game.physics) game.physics.blast(P.pos.x, P.pos.z, 3.5, 8);
       });
       break;
     }
@@ -586,18 +624,20 @@ export function castSkill(game, P, skill, target) {
       const start = P.pos.clone();
       const dir = V(-Math.sin(P.yaw), 0, -Math.cos(P.yaw));
       const end = start.clone().addScaledVector(dir, skill.dist);
-      selfFx(game, 'dust', P);
-      E.crescent(P.pos.clone().setY(P.pos.y + 1), P.yaw + Math.PI, '#c8f0ff', 2.2, { dur: 0.35, travel: 3, tilt: Math.PI / 2 });
+      if (K.leapStart) K.leapStart(c);
+      else { selfFx(game, 'dust', P); E.crescent(P.pos.clone().setY(P.pos.y + 1), P.yaw + Math.PI, '#c8f0ff', 2.2, { dur: 0.35, travel: 3, tilt: Math.PI / 2 }); }
       P.dashing = 0.4;
       E.add(null, 0.4, (dt, k) => {
         P.pos.x = start.x + (end.x - start.x) * k;
         P.pos.z = start.z + (end.z - start.z) * k;
         P.jumpOffset = Math.sin(k * Math.PI) * 2.2;
-      }, () => { P.jumpOffset = 0; selfFx(game, 'dust', P); });
+        if (K.leapTick) K.leapTick(c, k);
+      }, () => { P.jumpOffset = 0; if (K.leapEnd) K.leapEnd(c); else selfFx(game, 'dust', P); });
       break;
     }
     case 'blink': {
-      selfFx(game, 'blink', P);
+      const from = P.center();
+      if (K.blinkOut) K.blinkOut(c); else selfFx(game, 'blink', P);
       const dir = V(Math.sin(P.yaw), 0, Math.cos(P.yaw));
       for (let i = 0; i < 12; i++) {
         const nx = P.pos.x + dir.x * skill.dist / 12, nz = P.pos.z + dir.z * skill.dist / 12;
@@ -606,12 +646,12 @@ export function castSkill(game, P, skill, target) {
         P.pos.x = pos.x; P.pos.z = pos.z;
       }
       P.pos.y = game.world.standY(P.pos.x, P.pos.z);
-      selfFx(game, 'blink', P);
+      if (K.blinkIn) K.blinkIn(c, from); else selfFx(game, 'blink', P);
       break;
     }
     case 'summon': {
-      game.schedule(0.5, () => {
-        selfFx(game, skill.fx, P);
+      game.schedule(Math.max(T, 0.4), () => {
+        fxSelf();
         const max = skill.summon === 'skeleton' && skill.max < 10 ? (P.maxMinions || skill.max) : skill.max;
         for (let i = 0; i < skill.count; i++) {
           const a = P.yaw + Math.PI + (i - (skill.count - 1) / 2) * 0.8;
@@ -619,21 +659,22 @@ export function castSkill(game, P, skill, target) {
           pos.y = game.world.standY(pos.x, pos.z);
           const kind = skill.summon;
           // у каждого призыва своё появление
-          if (kind === 'bonegolem') { E.boneSpikes(pos, 3.2, 14, boneMat('#e4dcc4')); E.groundCrack(pos, '#60ff80', 3, 2.2); game.shake(0.5); }
+          if (K.appear) K.appear(c, pos, kind, i);
+          else if (kind === 'bonegolem') { E.boneSpikes(pos, 3.2, 14, boneMat('#e4dcc4')); E.groundCrack(pos, '#60ff80', 3, 2.2); game.shake(0.5); }
           else if (kind === 'deathknight') { E.skyBolt(pos, '#50ff90'); E.groundCrack(pos, '#40ff80', 2.6, 2.5); E.pillar(pos, '#30c070', 1.2, 14, 1.0); game.shake(0.7); }
           else if (kind === 'spiritwolf') { E.runeDecal(pos, '#80d0ff', 2, 1.4, 2); FX.burst(pos.x, pos.y + 0.6, pos.z, 40, { color: ['#80d0ff', '#ffffff'], speed: 3, up: 2, life: 1, size: 0.4 }); }
           else E.groundCrack(pos, '#50ff80', 1.6, 1.8);
-          game.schedule(kind === 'bonegolem' ? 0.5 : 0.15, () => game.allies.summon(kind, pos, skill.dur, max));
+          game.schedule((kind === 'bonegolem' ? 0.5 : 0.15) + (skill.count > 1 && K.appear ? i * 0.12 : 0), () => game.allies.summon(kind, pos, skill.dur, max));
         }
       });
       break;
     }
     case 'minionbuff': {
-      game.schedule(0.3, () => {
-        selfFx(game, skill.fx, P, skill.color);
+      game.schedule(T, () => {
+        fxSelf();
         for (const a of game.allies.list) {
           if (!a.alive) continue;
-          E.lightning(handPos(), a.center(), '#40ff60', 0.4);
+          if (K.minion) K.minion(c, a); else E.lightning(handPos(), a.center(), '#40ff60', 0.4);
           a.addBuff({ id: 'frenzy', dur: skill.buff.dur, mods: { dmgMul: skill.buff.dmgMul } });
           a.hp = a.maxHp;
           game.effects.attachAura(a.model.root, skill.color, skill.buff.dur, 1.0);

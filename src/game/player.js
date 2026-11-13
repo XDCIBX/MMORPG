@@ -6,7 +6,7 @@ import { HeroModel, heroKey, heroReady, loadHero, getHero } from '../chars/hero/
 import { equipVisual, animateGear, WEAPON_ANIM } from '../chars/gear.js';
 import { CLASSES, BRANCH_LEVEL, xpNeeded } from '../data/classes.js';
 import { SLOTS, starterKit, makePotion } from '../data/items.js';
-import { castSkill, levelUpFx, hitFx } from './skills.js';
+import { castSkill, precastSkill, levelUpFx, hitFx } from './skills.js';
 import { FX } from '../fx/particles.js';
 import { buildMount, prepareMount } from '../chars/horse.js';
 import { WeaponTrail } from '../fx/trails.js';
@@ -261,6 +261,7 @@ export class Player extends Entity {
     if (s.cast) {
       this.casting = { skill: s, t: 0, dur: s.cast / this.hasteMul, target };
       this.model.playAction('cast', 0.6);
+      precastSkill(g, this, s, target, this.casting.dur);
       return;
     }
     this.finishSkill(s, target);

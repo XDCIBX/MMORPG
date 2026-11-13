@@ -83,50 +83,50 @@ function irisMatFor(color) {
 const R = (x = 0, y = 0, z = 0) => [x, y, z];
 export const ACTIONS = {
   // рубящий удар справа налево: замах с разворотом корпуса, выпад, проводка
-  slash: { dur: 0.62, lunge: 0.35, keys: [
+  slash: { dur: 0.62, strike: 0.5, lunge: 0.35, keys: [
     [0.24, { shoulderR: R(-2.3, 0.4, -1.1), elbowR: R(-1.6), wristR: R(0.4), spine: R(0.05, 0.75, 0.05), chest: R(0, 0.2), shoulderL: R(-0.6, 0, 0.6), elbowL: R(-1.0), hipL: R(-0.35), kneeL: R(0.35), hipR: R(0.2), kneeR: R(0.15) }],
     [0.42, { shoulderR: R(-0.9, -0.3, 0.55), elbowR: R(-0.15), wristR: R(-0.5), spine: R(0.25, -0.65, -0.05), chest: R(0, -0.2), shoulderL: R(-0.3, 0, 0.9), elbowL: R(-0.5), hipL: R(-0.6), kneeL: R(0.55), hipR: R(0.35), kneeR: R(0.2) }],
     [0.64, { shoulderR: R(-0.4, -0.2, 0.65), elbowR: R(-0.3), wristR: R(-0.3), spine: R(0.2, -0.8), chest: R(0, -0.15), shoulderL: R(-0.2, 0, 0.7), hipL: R(-0.5), kneeL: R(0.45), hipR: R(0.3), kneeR: R(0.15) }],
   ] },
   // обратный удар снизу вверх слева направо
-  slash2: { dur: 0.58, lunge: 0.25, keys: [
+  slash2: { dur: 0.58, strike: 0.5, lunge: 0.25, keys: [
     [0.25, { shoulderR: R(-1.2, -0.4, 1.05), elbowR: R(-1.9), wristR: R(0.2), spine: R(0.1, -0.7), chest: R(0, -0.2), shoulderL: R(-0.4, 0, 0.4), hipR: R(-0.35), kneeR: R(0.35) }],
     [0.45, { shoulderR: R(-1.9, 0.3, -1.25), elbowR: R(-0.2), wristR: R(0.5), spine: R(0.05, 0.75), chest: R(0, 0.2), shoulderL: R(-0.3, 0, 1.0), hipR: R(-0.55), kneeR: R(0.5), hipL: R(0.3) }],
     [0.66, { shoulderR: R(-2.1, 0.2, -1.1), elbowR: R(-0.4), spine: R(0, 0.8), shoulderL: R(-0.2, 0, 0.8) }],
   ] },
   // мощный удар сверху с прыжком-выпадом
-  slam: { dur: 0.8, lunge: 0.55, hop: 0.25, keys: [
+  slam: { dur: 0.8, strike: 0.54, lunge: 0.55, hop: 0.25, keys: [
     [0.34, { shoulderR: R(-3.05, 0, -0.2), shoulderL: R(-3.05, 0, 0.2), elbowR: R(-1.3), elbowL: R(-1.3), wristR: R(0.5), spine: R(-0.35), neck: R(-0.2), hipL: R(-0.25), kneeL: R(0.6), hipR: R(0.1), kneeR: R(0.5) }],
     [0.52, { shoulderR: R(-0.75, 0, -0.05), shoulderL: R(-0.8, 0, 0.05), elbowR: R(-0.1), elbowL: R(-0.1), wristR: R(-0.3), spine: R(0.65), neck: R(0.2), hipL: R(-0.8), kneeL: R(1.0), hipR: R(0.45), kneeR: R(0.55) }],
     [0.72, { shoulderR: R(-0.7), shoulderL: R(-0.75), elbowR: R(-0.2), elbowL: R(-0.2), spine: R(0.55), hipL: R(-0.7), kneeL: R(0.9), hipR: R(0.4), kneeR: R(0.5) }],
   ] },
-  sweep: { dur: 0.7, spin: 1, keys: [
+  sweep: { dur: 0.7, strike: 0.42, spin: 1, keys: [
     [0.2, { spine: R(0.1, 0.9), shoulderR: R(-1.2, 0, -1.2), shoulderL: R(-1.3, 0.4, 0.6), elbowR: R(-0.6), elbowL: R(-0.7), hipL: R(-0.3), kneeL: R(0.5), hipR: R(-0.3), kneeR: R(0.5) }],
     [0.5, { spine: R(0.15, -0.2), shoulderR: R(-1.5, 0, -1.4), shoulderL: R(-1.4, 0, 1.1), elbowR: R(-0.1), elbowL: R(-0.3), hipL: R(-0.45), kneeL: R(0.7), hipR: R(-0.45), kneeR: R(0.7) }],
     [0.78, { spine: R(0.1, -0.8), shoulderR: R(-1.2, 0, 0.3), shoulderL: R(-1.2, 0, 0.9), elbowR: R(-0.3), elbowL: R(-0.3) }],
   ] },
-  thrust: { dur: 0.5, lunge: 0.6, keys: [
+  thrust: { dur: 0.5, strike: 0.52, lunge: 0.6, keys: [
     [0.3, { shoulderR: R(-0.6, 0.3, -0.4), elbowR: R(-2.0), spine: R(0, 0.45), chest: R(0, 0.15), hipR: R(0.2) }],
     [0.52, { shoulderR: R(-1.6), elbowR: R(-0.02), spine: R(0.25, -0.35), chest: R(0, -0.1), hipL: R(-0.7), kneeL: R(0.7), hipR: R(0.4), kneeR: R(0.2) }],
   ] },
-  bash: { dur: 0.55, lunge: 0.45, keys: [
+  bash: { dur: 0.55, strike: 0.52, lunge: 0.45, keys: [
     [0.3, { shoulderL: R(-0.5, 0, 0.4), elbowL: R(-1.9), spine: R(0, -0.45), hipR: R(-0.3), kneeR: R(0.4) }],
     [0.52, { shoulderL: R(-1.55, 0, 0.1), elbowL: R(-0.6), spine: R(0.3, 0.45), hipL: R(-0.65), kneeL: R(0.6), hipR: R(0.35) }],
   ] },
-  bow: { dur: 0.7, keys: [
+  bow: { dur: 0.7, strike: 0.62, keys: [
     [0.2, { shoulderL: R(-1.55, 0, 0.05), elbowL: R(-0.05), shoulderR: R(-1.5, 0, -0.1), elbowR: R(-1.4), spine: R(0, 0.25), neck: R(0, -0.2) }],
     [0.62, { shoulderL: R(-1.58, 0, 0.05), elbowL: R(0), shoulderR: R(-1.45, 0.25, -0.2), elbowR: R(-2.5), spine: R(0, 0.3), neck: R(0, -0.25) }],
     [0.72, { shoulderL: R(-1.55, 0, 0.05), elbowL: R(0), shoulderR: R(-1.2, 0.4, -0.5), elbowR: R(-1.8), spine: R(0, 0.3) }],
   ] },
-  cast: { dur: 0.6, keys: [
+  cast: { dur: 0.6, strike: 0.45, keys: [
     [0.3, { shoulderR: R(-1.7, 0, -0.1), elbowR: R(-0.25), shoulderL: R(-0.7, 0, 0.5), elbowL: R(-0.6), spine: R(0.05, -0.2) }],
     [0.6, { shoulderR: R(-1.5, 0, -0.1), elbowR: R(-0.1), shoulderL: R(-0.6, 0, 0.5), spine: R(0.1, -0.15) }],
   ] },
-  cast2: { dur: 0.85, keys: [
+  cast2: { dur: 0.85, strike: 0.52, keys: [
     [0.4, { shoulderR: R(-2.9, 0, -0.35), shoulderL: R(-2.9, 0, 0.35), elbowR: R(-0.2), elbowL: R(-0.2), spine: R(-0.22), neck: R(-0.3) }],
     [0.65, { shoulderR: R(-1.0, 0, -0.6), shoulderL: R(-1.0, 0, 0.6), elbowR: R(-0.3), elbowL: R(-0.3), spine: R(0.3) }],
   ] },
-  buff: { dur: 0.8, keys: [
+  buff: { dur: 0.8, strike: 0.38, keys: [
     [0.35, { shoulderR: R(-0.6, 0, -1.3), shoulderL: R(-0.6, 0, 1.3), elbowR: R(-0.9), elbowL: R(-0.9), spine: R(-0.3), neck: R(-0.35) }],
     [0.7, { shoulderR: R(-0.6, 0, -1.2), shoulderL: R(-0.6, 0, 1.2), elbowR: R(-0.9), elbowL: R(-0.9), spine: R(-0.25), neck: R(-0.3) }],
   ] },
