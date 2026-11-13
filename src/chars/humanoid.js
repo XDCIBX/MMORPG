@@ -141,8 +141,146 @@ export const ACTIONS = {
     [0.3, { spine: R(-0.2), neck: R(-0.3) }],
     [0.5, { spine: R(0.4), neck: R(0.3) }],
   ] },
+  // ---------- Движения для умений ----------
+  // топот: колено вверх, руки взмывают — и удар ногой в землю
+  stomp: { dur: 0.85, strike: 0.5, keys: [
+    [0.3, { hipR: R(-1.5), kneeR: R(1.7), shoulderR: R(-2.4, 0, -0.7), shoulderL: R(-2.4, 0, 0.7), elbowR: R(-1.2), elbowL: R(-1.2), spine: R(-0.25), neck: R(-0.2), kneeL: R(0.15) }],
+    [0.5, { hipR: R(-0.5), kneeR: R(0.6), hipL: R(0.15), kneeL: R(0.5), shoulderR: R(-0.2, 0, -0.9), shoulderL: R(-0.2, 0, 0.9), elbowR: R(-0.7), elbowL: R(-0.7), spine: R(0.45), neck: R(0.1) }],
+    [0.78, { hipR: R(-0.45), kneeR: R(0.55), hipL: R(0.1), kneeL: R(0.45), shoulderR: R(-0.1, 0, -0.8), shoulderL: R(-0.1, 0, 0.8), elbowR: R(-0.8), elbowL: R(-0.8), spine: R(0.35) }],
+  ] },
+  // прыжок с ударом сверху: присед, взлёт с оружием над головой, обрушение
+  leapslam: { dur: 1.0, lunge: 0.6, hop: 1.15, hopT: [0.12, 0.45], strike: 0.57, keys: [
+    [0.13, { spine: R(0.4), hipL: R(-0.7), kneeL: R(1.2), hipR: R(-0.7), kneeR: R(1.2), shoulderR: R(0.3), shoulderL: R(0.3), elbowR: R(-0.8), elbowL: R(-0.8) }],
+    [0.38, { shoulderR: R(-3.1, 0, -0.15), shoulderL: R(-3.1, 0, 0.15), elbowR: R(-1.5), elbowL: R(-1.5), wristR: R(0.6), spine: R(-0.5), neck: R(-0.25), hipL: R(-0.9), kneeL: R(1.5), hipR: R(0.3), kneeR: R(1.3) }],
+    [0.57, { shoulderR: R(-0.7), shoulderL: R(-0.75), elbowR: R(-0.05), elbowL: R(-0.05), wristR: R(-0.35), spine: R(0.75), neck: R(0.2), hipL: R(-1.0), kneeL: R(1.2), hipR: R(0.5), kneeR: R(0.8) }],
+    [0.82, { shoulderR: R(-0.7), shoulderL: R(-0.75), elbowR: R(-0.15), elbowL: R(-0.15), spine: R(0.65), hipL: R(-0.9), kneeL: R(1.1), hipR: R(0.45), kneeR: R(0.7) }],
+  ] },
+  // напряжение силы: руки скрещены у груди — и рывком в стороны
+  flex: { dur: 0.95, strike: 0.42, dip: [0.03, 0.42, 0.12], keys: [
+    [0.26, { shoulderR: R(-1.2, 0, 0.9), shoulderL: R(-1.2, 0, -0.9), elbowR: R(-1.9), elbowL: R(-1.9), spine: R(0.4), neck: R(0.3), kneeL: R(0.5), kneeR: R(0.5), hipL: R(-0.3), hipR: R(-0.3) }],
+    [0.42, { shoulderR: R(-0.3, 0, -1.45), shoulderL: R(-0.3, 0, 1.45), elbowR: R(-1.9), elbowL: R(-1.9), spine: R(-0.3), chest: R(-0.15), neck: R(-0.3), hipL: R(0, 0, 0.2), hipR: R(0, 0, -0.2) }],
+    [0.82, { shoulderR: R(-0.3, 0, -1.4), shoulderL: R(-0.3, 0, 1.4), elbowR: R(-1.8), elbowL: R(-1.8), spine: R(-0.25), chest: R(-0.12), neck: R(-0.25), hipL: R(0, 0, 0.2), hipR: R(0, 0, -0.2) }],
+  ] },
+  // глухая оборона: щит вперёд, стойка на полусогнутых
+  guard: { dur: 0.95, strike: 0.38, dip: [0.08, 0.9, 0.16], keys: [
+    [0.3, { shoulderL: R(-1.5, 0, -0.35), elbowL: R(-1.5), shoulderR: R(-0.3, 0, -0.5), elbowR: R(-1.2), spine: R(0.3, 0.3), neck: R(0.15), hipL: R(-0.7), kneeL: R(0.9), hipR: R(0.3), kneeR: R(0.8) }],
+    [0.82, { shoulderL: R(-1.55, 0, -0.3), elbowL: R(-1.45), shoulderR: R(-0.3, 0, -0.5), elbowR: R(-1.2), spine: R(0.3, 0.3), neck: R(0.15), hipL: R(-0.7), kneeL: R(0.9), hipR: R(0.3), kneeR: R(0.8) }],
+  ] },
+  // бросок из-за головы
+  throw: { dur: 0.7, lunge: 0.3, strike: 0.5, keys: [
+    [0.3, { shoulderR: R(-2.6, 0.3, -0.5), elbowR: R(-1.7), wristR: R(0.6), spine: R(-0.3, 0.7), chest: R(0, 0.2), shoulderL: R(-1.4, 0, 0.2), elbowL: R(-0.2), hipR: R(0.3), kneeR: R(0.3), hipL: R(-0.4), kneeL: R(0.3) }],
+    [0.5, { shoulderR: R(-1.3, -0.2, 0.2), elbowR: R(-0.05), wristR: R(-0.6), spine: R(0.55, -0.6), chest: R(0, -0.2), shoulderL: R(0.4, 0, 0.5), elbowL: R(-0.8), hipL: R(-0.7), kneeL: R(0.8), hipR: R(0.5), kneeR: R(0.3) }],
+    [0.74, { shoulderR: R(-0.5, -0.2, 0.5), elbowR: R(-0.2), spine: R(0.5, -0.7), shoulderL: R(0.4, 0, 0.5), hipL: R(-0.6), kneeL: R(0.7), hipR: R(0.4) }],
+  ] },
+  // рёв: сжаться — и распахнуться, запрокинув голову
+  roar: { dur: 1.0, strike: 0.38, dip: [0.02, 0.38, 0.14], keys: [
+    [0.24, { spine: R(0.55), neck: R(0.35), shoulderR: R(-0.9, 0, 0.5), shoulderL: R(-0.9, 0, -0.5), elbowR: R(-2.0), elbowL: R(-2.0), hipL: R(-0.5), kneeL: R(0.9), hipR: R(-0.5), kneeR: R(0.9) }],
+    [0.4, { spine: R(-0.4), chest: R(-0.2), neck: R(-0.5), shoulderR: R(0.5, 0, -1.0), shoulderL: R(0.5, 0, 1.0), elbowR: R(-0.6), elbowL: R(-0.6), hipL: R(0, 0, 0.22), hipR: R(0, 0, -0.22), kneeL: R(0.15), kneeR: R(0.15) }],
+    [0.82, { spine: R(-0.35), chest: R(-0.2), neck: R(-0.45), shoulderR: R(0.45, 0, -0.95), shoulderL: R(0.45, 0, 0.95), elbowR: R(-0.7), elbowL: R(-0.7), hipL: R(0, 0, 0.22), hipR: R(0, 0, -0.22) }],
+  ] },
+  // молитва: на одно колено, руки к груди, затем раскрыться к небу
+  pray: { dur: 1.25, strike: 0.36, dip: [0.04, 0.66, 0.42], keys: [
+    [0.22, { hipL: R(-1.45), kneeL: R(1.5), hipR: R(0.15), kneeR: R(1.6), ankleR: R(0.6), spine: R(0.3), neck: R(0.45), shoulderR: R(-1.0, 0, 0.45), shoulderL: R(-1.0, 0, -0.45), elbowR: R(-1.9), elbowL: R(-1.9) }],
+    [0.5, { hipL: R(-1.45), kneeL: R(1.5), hipR: R(0.15), kneeR: R(1.6), ankleR: R(0.6), spine: R(0.2), neck: R(0.3), shoulderR: R(-1.0, 0, 0.45), shoulderL: R(-1.0, 0, -0.45), elbowR: R(-1.9), elbowL: R(-1.9) }],
+    [0.72, { shoulderR: R(-2.3, 0, -0.8), shoulderL: R(-2.3, 0, 0.8), elbowR: R(-0.3), elbowL: R(-0.3), spine: R(-0.3), neck: R(-0.4) }],
+    [0.88, { shoulderR: R(-2.2, 0, -0.9), shoulderL: R(-2.2, 0, 0.9), elbowR: R(-0.3), elbowL: R(-0.3), spine: R(-0.25), neck: R(-0.35) }],
+  ] },
+  // кара: клинок воздет к небу, затем рубит вниз
+  smite: { dur: 0.95, lunge: 0.4, strike: 0.6, keys: [
+    [0.22, { shoulderR: R(-3.0, 0, -0.2), elbowR: R(-0.15), wristR: R(0.2), shoulderL: R(-0.3, 0, 0.7), elbowL: R(-0.6), spine: R(-0.25), neck: R(-0.35), hipL: R(-0.2), kneeL: R(0.2) }],
+    [0.44, { shoulderR: R(-3.05, 0, -0.2), elbowR: R(-0.35), wristR: R(0.4), shoulderL: R(-0.3, 0, 0.8), elbowL: R(-0.6), spine: R(-0.32), neck: R(-0.35), hipL: R(-0.25), kneeL: R(0.25) }],
+    [0.6, { shoulderR: R(-0.85, -0.15, 0.2), elbowR: R(-0.08), wristR: R(-0.45), shoulderL: R(0.3, 0, 0.7), elbowL: R(-0.7), spine: R(0.6, -0.3), neck: R(0.15), hipL: R(-0.8), kneeL: R(0.9), hipR: R(0.45), kneeR: R(0.4) }],
+    [0.8, { shoulderR: R(-0.7, -0.15, 0.25), elbowR: R(-0.15), wristR: R(-0.3), shoulderL: R(0.3, 0, 0.7), spine: R(0.5, -0.3), hipL: R(-0.7), kneeL: R(0.8), hipR: R(0.4), kneeR: R(0.35) }],
+  ] },
+  // двойной росчерк: справа налево и обратно
+  double: { dur: 0.8, lunge: 0.4, strike: 0.3, strike2: 0.58, keys: [
+    [0.16, { shoulderR: R(-2.2, 0.4, -1.1), elbowR: R(-1.5), wristR: R(0.4), spine: R(0.05, 0.75), chest: R(0, 0.2), shoulderL: R(-0.6, 0, 0.6), elbowL: R(-1.0), hipL: R(-0.35), kneeL: R(0.35) }],
+    [0.3, { shoulderR: R(-0.9, -0.3, 0.6), elbowR: R(-0.15), wristR: R(-0.5), spine: R(0.25, -0.7), chest: R(0, -0.2), shoulderL: R(-0.3, 0, 0.9), hipL: R(-0.6), kneeL: R(0.55), hipR: R(0.35) }],
+    [0.44, { shoulderR: R(-1.1, -0.4, 1.05), elbowR: R(-1.7), wristR: R(0.2), spine: R(0.15, -0.8), chest: R(0, -0.2), shoulderL: R(-0.4, 0, 0.5), hipL: R(-0.6), kneeL: R(0.6), hipR: R(0.35) }],
+    [0.58, { shoulderR: R(-1.9, 0.3, -1.25), elbowR: R(-0.2), wristR: R(0.5), spine: R(0.05, 0.75), chest: R(0, 0.2), shoulderL: R(-0.3, 0, 1.0), hipR: R(-0.5), kneeR: R(0.5), hipL: R(0.3) }],
+    [0.78, { shoulderR: R(-2.1, 0.2, -1.1), elbowR: R(-0.4), spine: R(0, 0.8), shoulderL: R(-0.2, 0, 0.8) }],
+  ] },
+  // долгое вращение с вытянутым оружием
+  spin2: { dur: 1.15, spin: 3, spinT: [0.08, 0.9], strike: 0.25, dip: [0.05, 0.9, 0.08], keys: [
+    [0.12, { spine: R(0.1, 0.9), shoulderR: R(-1.2, 0, -1.2), shoulderL: R(-1.3, 0.4, 0.6), elbowR: R(-0.6), elbowL: R(-0.7), hipL: R(-0.3), kneeL: R(0.5), hipR: R(-0.3), kneeR: R(0.5) }],
+    [0.3, { spine: R(0.18, -0.1), shoulderR: R(-1.5, 0, -1.45), shoulderL: R(-1.2, 0, 1.3), elbowR: R(-0.05), elbowL: R(-0.3), hipL: R(-0.45, 0, 0.15), kneeL: R(0.7), hipR: R(-0.45, 0, -0.15), kneeR: R(0.7) }],
+    [0.85, { spine: R(0.18, -0.1), shoulderR: R(-1.5, 0, -1.45), shoulderL: R(-1.2, 0, 1.3), elbowR: R(-0.05), elbowL: R(-0.3), hipL: R(-0.45, 0, 0.15), kneeL: R(0.7), hipR: R(-0.45, 0, -0.15), kneeR: R(0.7) }],
+  ] },
+  // навесной выстрел в небо
+  bowhigh: { dur: 0.85, strike: 0.55, keys: [
+    [0.2, { shoulderL: R(-2.3, 0, 0.05), elbowL: R(-0.05), shoulderR: R(-2.2, 0, -0.1), elbowR: R(-1.4), spine: R(-0.3, 0.25), neck: R(-0.35, -0.2), hipR: R(0.25), kneeR: R(0.35) }],
+    [0.52, { shoulderL: R(-2.35, 0, 0.05), elbowL: R(0), shoulderR: R(-2.1, 0.25, -0.2), elbowR: R(-2.5), spine: R(-0.4, 0.3), neck: R(-0.4, -0.25), hipR: R(0.3), kneeR: R(0.45) }],
+    [0.62, { shoulderL: R(-2.3, 0, 0.05), elbowL: R(0), shoulderR: R(-1.7, 0.4, -0.6), elbowR: R(-1.6), spine: R(-0.35, 0.3), neck: R(-0.4, -0.2), hipR: R(0.3), kneeR: R(0.4) }],
+    [0.8, { shoulderL: R(-2.2, 0, 0.05), elbowL: R(0), shoulderR: R(-1.5, 0.4, -0.7), elbowR: R(-1.4), spine: R(-0.3, 0.3), neck: R(-0.35, -0.2) }],
+  ] },
+  // мощный выстрел: долгое натяжение, отдача
+  powershot: { dur: 1.0, strike: 0.66, dip: [0.1, 0.8, 0.1], keys: [
+    [0.16, { shoulderL: R(-1.55, 0, 0.05), elbowL: R(-0.05), shoulderR: R(-1.5, 0, -0.1), elbowR: R(-1.3), spine: R(0.05, 0.25), neck: R(0, -0.2), hipL: R(-0.5), kneeL: R(0.6), hipR: R(0.35), kneeR: R(0.5) }],
+    [0.6, { shoulderL: R(-1.6, 0, 0.05), elbowL: R(0), shoulderR: R(-1.45, 0.3, -0.25), elbowR: R(-2.6), spine: R(-0.12, 0.42), neck: R(0.05, -0.35), hipL: R(-0.55), kneeL: R(0.65), hipR: R(0.4), kneeR: R(0.55) }],
+    [0.68, { shoulderL: R(-1.7, 0, 0.1), elbowL: R(-0.2), shoulderR: R(-1.0, 0.5, -0.8), elbowR: R(-1.2), spine: R(-0.28, 0.45), neck: R(0.1, -0.3), hipL: R(-0.45), kneeL: R(0.5), hipR: R(0.45), kneeR: R(0.6) }],
+    [0.85, { shoulderL: R(-1.5, 0, 0.1), elbowL: R(-0.1), shoulderR: R(-0.8, 0.5, -0.8), elbowR: R(-1.0), spine: R(-0.15, 0.4), hipL: R(-0.4), kneeL: R(0.45), hipR: R(0.4), kneeR: R(0.5) }],
+  ] },
+  // отскок назад: группировка в воздухе, лук на цель
+  leapback: { dur: 0.6, strike: 0.2, keys: [
+    [0.12, { spine: R(0.5), hipL: R(-0.8), kneeL: R(1.3), hipR: R(-0.8), kneeR: R(1.3), shoulderR: R(0.5, 0, -0.3), shoulderL: R(0.5, 0, 0.3) }],
+    [0.45, { spine: R(0.35), hipL: R(-1.3), kneeL: R(1.9), hipR: R(-0.6), kneeR: R(1.6), shoulderL: R(-1.5, 0, 0.1), elbowL: R(-0.1), shoulderR: R(0.7, 0, -0.6), elbowR: R(-0.5), neck: R(-0.2) }],
+    [0.8, { spine: R(0.4), hipL: R(-0.8), kneeL: R(1.1), hipR: R(0.3), kneeR: R(0.9), shoulderL: R(-1.3, 0, 0.2), shoulderR: R(0.3, 0, -0.5) }],
+  ] },
+  // зов: рука ко рту, вторая отведена
+  call: { dur: 1.0, strike: 0.4, keys: [
+    [0.25, { shoulderR: R(-1.5, 0, 0.35), elbowR: R(-2.3), shoulderL: R(0.2, 0, 0.9), elbowL: R(-0.3), spine: R(0.15), neck: R(0.1) }],
+    [0.42, { shoulderR: R(-1.6, 0, 0.3), elbowR: R(-2.2), shoulderL: R(0.3, 0, 1.0), elbowL: R(-0.2), spine: R(-0.3), chest: R(-0.15), neck: R(-0.4) }],
+    [0.75, { shoulderR: R(-1.6, 0, 0.3), elbowR: R(-2.2), shoulderL: R(0.3, 0, 1.0), elbowL: R(-0.2), spine: R(-0.3), chest: R(-0.15), neck: R(-0.4) }],
+  ] },
+  // призыв из земли: ладонь к земле, затем медленно поднять обе руки
+  summon: { dur: 1.2, strike: 0.42, dip: [0.03, 0.48, 0.4], keys: [
+    [0.2, { hipL: R(-1.45), kneeL: R(1.5), hipR: R(0.15), kneeR: R(1.6), ankleR: R(0.6), spine: R(0.65), neck: R(0.2), shoulderL: R(-0.7, 0, 0.15), elbowL: R(-0.1), shoulderR: R(-0.3, 0, -0.5), elbowR: R(-1.0) }],
+    [0.38, { hipL: R(-1.45), kneeL: R(1.5), hipR: R(0.15), kneeR: R(1.6), ankleR: R(0.6), spine: R(0.7), neck: R(0.1), shoulderL: R(-0.65, 0, 0.15), elbowL: R(-0.05), shoulderR: R(-0.3, 0, -0.5), elbowR: R(-1.0) }],
+    [0.62, { shoulderL: R(-1.5, 0, 0.5), elbowL: R(-0.9), wristL: R(-0.6), shoulderR: R(-1.5, 0, -0.5), elbowR: R(-0.9), spine: R(-0.1), neck: R(-0.15), kneeL: R(0.2), kneeR: R(0.2) }],
+    [0.85, { shoulderL: R(-2.5, 0, 0.6), elbowL: R(-0.5), wristL: R(-0.6), shoulderR: R(-2.5, 0, -0.6), elbowR: R(-0.5), spine: R(-0.3), neck: R(-0.35) }],
+  ] },
+  // метнуть заклинание: рука отведена к плечу — выпад вперёд
+  hurl: { dur: 0.62, lunge: 0.25, strike: 0.44, keys: [
+    [0.26, { shoulderR: R(-0.9, 0, -0.9), elbowR: R(-2.0), spine: R(-0.1, 0.6), chest: R(0, 0.2), shoulderL: R(-0.9, 0, 0.2), elbowL: R(-1.0), hipR: R(0.25), kneeR: R(0.3), hipL: R(-0.3), kneeL: R(0.3) }],
+    [0.44, { shoulderR: R(-1.55, 0, 0.1), elbowR: R(-0.03), spine: R(0.3, -0.55), chest: R(0, -0.2), shoulderL: R(0.2, 0, 0.5), elbowL: R(-1.1), hipL: R(-0.65), kneeL: R(0.7), hipR: R(0.4), kneeR: R(0.25) }],
+    [0.7, { shoulderR: R(-1.4, 0, 0.1), elbowR: R(-0.1), spine: R(0.25, -0.5), shoulderL: R(0.2, 0, 0.5), elbowL: R(-1.1), hipL: R(-0.55), kneeL: R(0.6), hipR: R(0.35) }],
+  ] },
+  // толчок двумя ладонями от груди
+  push: { dur: 0.65, lunge: 0.2, strike: 0.42, keys: [
+    [0.26, { shoulderR: R(-0.8, 0, -0.5), shoulderL: R(-0.8, 0, 0.5), elbowR: R(-2.1), elbowL: R(-2.1), spine: R(-0.2), neck: R(0.1), hipL: R(-0.2), kneeL: R(0.35), hipR: R(0.15), kneeR: R(0.35) }],
+    [0.42, { shoulderR: R(-1.55, 0, 0.15), shoulderL: R(-1.55, 0, -0.15), elbowR: R(-0.05), elbowL: R(-0.05), wristR: R(-0.7), wristL: R(-0.7), spine: R(0.35), hipL: R(-0.6), kneeL: R(0.7), hipR: R(0.4), kneeR: R(0.3) }],
+    [0.72, { shoulderR: R(-1.5, 0, 0.1), shoulderL: R(-1.5, 0, -0.1), elbowR: R(-0.15), elbowL: R(-0.15), wristR: R(-0.6), wristL: R(-0.6), spine: R(0.3), hipL: R(-0.55), kneeL: R(0.65), hipR: R(0.35), kneeR: R(0.3) }],
+  ] },
+  // поддержание потока: руки вытянуты вперёд, корпус откинут, дрожь
+  channel: { dur: 1.25, strike: 0.22, keys: [
+    [0.18, { shoulderR: R(-1.5, 0, -0.25), shoulderL: R(-1.5, 0, 0.25), elbowR: R(-0.5), elbowL: R(-0.5), wristL: R(-0.6), spine: R(-0.18), hipL: R(-0.45), kneeL: R(0.55), hipR: R(0.35), kneeR: R(0.45) }],
+    [0.5, { shoulderR: R(-1.6, 0, -0.15), shoulderL: R(-1.6, 0, 0.15), elbowR: R(-0.25), elbowL: R(-0.25), wristL: R(-0.7), spine: R(-0.24), neck: R(0.1), hipL: R(-0.5), kneeL: R(0.6), hipR: R(0.4), kneeR: R(0.5) }],
+    [0.84, { shoulderR: R(-1.5, 0, -0.25), shoulderL: R(-1.5, 0, 0.25), elbowR: R(-0.45), elbowL: R(-0.45), wristL: R(-0.6), spine: R(-0.16), hipL: R(-0.45), kneeL: R(0.55), hipR: R(0.35), kneeR: R(0.45) }],
+  ] },
+  // указать в небо — и обрушить вниз
+  cast3: { dur: 0.9, strike: 0.5, keys: [
+    [0.24, { shoulderL: R(-3.0, 0, 0.25), elbowL: R(-0.1), shoulderR: R(-0.6, 0, -0.5), elbowR: R(-1.2), spine: R(-0.3), neck: R(-0.4), hipR: R(0.2), kneeR: R(0.2) }],
+    [0.4, { shoulderL: R(-3.05, 0, 0.3), elbowL: R(-0.25), shoulderR: R(-0.6, 0, -0.5), elbowR: R(-1.2), spine: R(-0.35), neck: R(-0.45), hipR: R(0.2), kneeR: R(0.2) }],
+    [0.52, { shoulderL: R(-1.0, 0, 0.1), elbowL: R(-0.05), wristL: R(-0.3), shoulderR: R(0.1, 0, -0.6), elbowR: R(-1.2), spine: R(0.45), neck: R(0.15), hipL: R(-0.6), kneeL: R(0.75), hipR: R(0.35), kneeR: R(0.35) }],
+    [0.78, { shoulderL: R(-0.95, 0, 0.1), elbowL: R(-0.1), shoulderR: R(0.1, 0, -0.6), elbowR: R(-1.2), spine: R(0.4), hipL: R(-0.55), kneeL: R(0.7), hipR: R(0.3), kneeR: R(0.3) }],
+  ] },
+  // воззвание: руки медленно поднимаются, тело приподнимается над землёй
+  invoke: { dur: 1.3, strike: 0.5, hop: 0.35, hopT: [0.15, 0.75], keys: [
+    [0.15, { shoulderR: R(-0.2, 0, -0.5), shoulderL: R(-0.2, 0, 0.5), elbowR: R(-0.8), elbowL: R(-0.8), wristL: R(-0.6), spine: R(0.2), neck: R(0.3) }],
+    [0.5, { shoulderR: R(-2.6, 0, -0.75), shoulderL: R(-2.6, 0, 0.75), elbowR: R(-0.35), elbowL: R(-0.35), wristL: R(-0.5), spine: R(-0.3), chest: R(-0.15), neck: R(-0.45), hipL: R(-0.15), kneeL: R(0.5), hipR: R(0.1), kneeR: R(0.25), ankleL: R(0.4), ankleR: R(0.4) }],
+    [0.72, { shoulderR: R(-2.7, 0, -0.7), shoulderL: R(-2.7, 0, 0.7), elbowR: R(-0.3), elbowL: R(-0.3), wristL: R(-0.5), spine: R(-0.32), chest: R(-0.15), neck: R(-0.45), hipL: R(-0.15), kneeL: R(0.5), hipR: R(0.1), kneeR: R(0.25), ankleL: R(0.4), ankleR: R(0.4) }],
+    [0.86, { shoulderR: R(-0.9, 0, -0.7), shoulderL: R(-0.9, 0, 0.7), elbowR: R(-0.2), elbowL: R(-0.2), spine: R(0.35), neck: R(0.1), kneeL: R(0.4), kneeR: R(0.4) }],
+  ] },
+  // жатва: широкий горизонтальный мах из-за спины
+  reap: { dur: 0.9, lunge: 0.45, strike: 0.5, keys: [
+    [0.3, { spine: R(0.0, 1.0), chest: R(0, 0.3), shoulderR: R(-1.3, 0.3, -1.5), elbowR: R(-0.9), wristR: R(0.3), shoulderL: R(-1.5, 0.6, -0.4), elbowL: R(-1.3), neck: R(0, -0.6), hipL: R(-0.3), kneeL: R(0.4), hipR: R(0.25, 0, -0.2), kneeR: R(0.35) }],
+    [0.5, { spine: R(0.3, -0.5), chest: R(0, -0.3), shoulderR: R(-1.4, 0, 0.3), elbowR: R(-0.1), wristR: R(-0.2), shoulderL: R(-1.3, 0, 0.5), elbowL: R(-0.7), neck: R(0, 0.3), hipL: R(-0.75), kneeL: R(0.85), hipR: R(0.45), kneeR: R(0.35) }],
+    [0.66, { spine: R(0.3, -1.0), chest: R(0, -0.35), shoulderR: R(-1.3, 0, 0.9), elbowR: R(-0.4), shoulderL: R(-1.0, 0, 0.9), elbowL: R(-0.9), neck: R(0, 0.5), hipL: R(-0.7), kneeL: R(0.8), hipR: R(0.4), kneeR: R(0.3) }],
+    [0.84, { spine: R(0.25, -0.9), chest: R(0, -0.3), shoulderR: R(-1.2, 0, 0.8), elbowR: R(-0.5), shoulderL: R(-0.9, 0, 0.8), elbowL: R(-0.9), hipL: R(-0.6), kneeL: R(0.7), hipR: R(0.35) }],
+  ] },
 };
 
+const HOP_T = [0.15, 0.38], SPIN_T = [0.12, 0.75];
 const JOINTS = ['hips', 'spine', 'chest', 'neck', 'head', 'shoulderL', 'shoulderR', 'elbowL', 'elbowR', 'wristL', 'wristR', 'hipL', 'hipR', 'kneeL', 'kneeR', 'ankleL', 'ankleR', 'tail'];
 
 /**
@@ -563,8 +701,11 @@ export class Humanoid {
       const p = this.actionT, A = this.action;
       const w = Math.sin(clamp((p - 0.1) / 0.6, 0, 1) * Math.PI);
       this.body.position.z = (A.lunge || 0) * w;
-      this.body.position.y = (A.hop || 0) * Math.sin(clamp((p - 0.15) / 0.38, 0, 1) * Math.PI);
-      this.body.rotation.y = A.spin ? -smoothstep(0.12, 0.75, p) * Math.PI * 2 * A.spin : 0;
+      const hT = A.hopT || HOP_T, sT = A.spinT || SPIN_T;
+      this.body.position.y = (A.hop || 0) * Math.sin(clamp((p - hT[0]) / hT[1], 0, 1) * Math.PI);
+      // присед/колено: опускаем тело, чтобы ступни остались на земле
+      if (A.dip) this.body.position.y -= A.dip[2] * (this.hipY / 0.93) * smoothstep(A.dip[0], A.dip[0] + 0.16, p) * (1 - smoothstep(A.dip[1] - 0.16, A.dip[1], p));
+      this.body.rotation.y = A.spin ? -smoothstep(sT[0], sT[1], p) * Math.PI * 2 * A.spin : 0;
     } else if (this.deadT < 0) {
       this.body.position.z *= 0.8; this.body.position.y *= 0.8; this.body.rotation.y = 0;
     }

@@ -6,7 +6,7 @@ import { gemMat, glowMat, boneMat, metalMat, woodMat, basicMat } from '../chars/
 import { RibbonTrail } from './trails.js';
 
 // ---------- Шейдерные материалы эффектов ----------
-const NOISE_GLSL = `
+export const NOISE_GLSL = `
 float h3(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
 float n3(vec3 p){ vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(mix(h3(i), h3(i + vec3(1,0,0)), f.x), mix(h3(i + vec3(0,1,0)), h3(i + vec3(1,1,0)), f.x), f.y),
@@ -243,12 +243,12 @@ export class Effects {
 
   // Летящий снаряд. target: функция, возвращающая Vector3 (или null)
   projectile(kind, from, targetFn, speed, onHit, opts = {}) {
-    const obj = buildProjectile(kind, opts.color);
+    const obj = opts.obj || buildProjectile(kind, opts.color);
     obj.position.copy(from);
-    const trail = PROJ_TRAIL[kind] || PROJ_TRAIL.magic;
+    const trail = opts.trail || PROJ_TRAIL[kind] || PROJ_TRAIL.magic;
     const last = from.clone();
     // светящаяся лента за снарядом
-    const rb = PROJ_RIBBON[kind];
+    const rb = opts.ribbon === false ? null : (opts.ribbon || PROJ_RIBBON[kind]);
     let ribbon = null;
     if (rb && this.camera) {
       ribbon = new RibbonTrail(this.scene, opts.color || rb[0], rb[1], rb[2], rb[3] || '#ffffff');
@@ -268,12 +268,14 @@ export class Effects {
       obj.position.addScaledVector(dir, step);
       obj.quaternion.setFromUnitVectors(UP, dir);
       if (obj.userData.spin) obj.children[0].rotation.y += dt * 20;
+      if (opts.roll) obj.rotateY((it.t || 0) * opts.roll);
+      if (opts.onTick) opts.onTick(obj, dt, dir);
       if (ribbon) { ribbon.push(obj.position); ribbon.update(dt, this.camera.position); }
       // шлейф
       const n = trail.rate;
       for (let i = 0; i < n; i++) {
         const p = last.clone().lerp(obj.position, Math.random());
-        FX.emit({ x: p.x + (Math.random() - 0.5) * trail.jit, y: p.y + (Math.random() - 0.5) * trail.jit, z: p.z + (Math.random() - 0.5) * trail.jit, vy: trail.vy || 0, life: trail.life, size: trail.size, color: Array.isArray(trail.color) ? trail.color[i % trail.color.length] : (opts.color || trail.color), alpha: trail.alpha, additive: trail.additive, grow: trail.grow });
+        FX.emit({ x: p.x + (Math.random() - 0.5) * trail.jit, y: p.y + (Math.random() - 0.5) * trail.jit, z: p.z + (Math.random() - 0.5) * trail.jit, vy: trail.vy || 0, life: trail.life, size: trail.size, color: Array.isArray(trail.color) ? trail.color[Math.floor(Math.random() * trail.color.length)] : (opts.color || trail.color), alpha: trail.alpha, additive: trail.additive, grow: trail.grow, tex: trail.tex, spin: trail.spin, gravity: trail.gravity });
       }
       last.copy(obj.position);
     });
@@ -281,8 +283,9 @@ export class Effects {
       const end0 = it.onEnd;
       it.onEnd = () => { end0 && end0(); this.add(null, 1, (dt) => !ribbon.update(dt, this.camera.position), () => ribbon.dispose()); };
     }
-    if (PROJ_LIGHT[kind]) {
-      const l = this.flash(from, PROJ_LIGHT[kind], 12, 6, 8);
+    const lightC = opts.light || PROJ_LIGHT[kind];
+    if (lightC) {
+      const l = this.flash(from, lightC, 12, 6, 8);
       l.userData.follow = obj;
       const end = it.onEnd;
       it.onEnd = () => { l.userData.t = l.userData.dur; end && end(); };
