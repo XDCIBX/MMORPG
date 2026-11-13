@@ -161,7 +161,7 @@ export class Effects {
     this.add(m, dur, (dt, k) => {
       const w = k < 0.15 ? k / 0.15 : 1 - (k - 0.15) / 0.85;
       m.scale.set(w, 1, w);
-      m.material.opacity = w * 0.7; core.material.opacity = w;
+      m.material.opacity = w * 0.36; core.material.opacity = w * 0.7;
     });
     this.flash(pos.clone().setY(pos.y + 2), color, 60, dur, 20);
   }
@@ -238,7 +238,9 @@ export class Effects {
     this.flash(pos, color, 50 * size, 0.4, 18);
     const m = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 3), fireMat(color, '#ffe8a0', { disp: 0.6 }));
     m.position.copy(pos);
-    this.add(m, 0.6, (dt, k) => { m.scale.setScalar((0.5 + Math.sqrt(k) * 2.6) * size); m.material.uniforms.uAlpha.value = 1 - k * k; });
+    this.add(m, 0.42, (dt, k) => { m.scale.setScalar((0.4 + Math.sqrt(k) * 1.5) * size); m.material.uniforms.uAlpha.value = (1 - k) * (1 - k) * 0.85; });
+    // языки пламени и дым вместо «шара»
+    for (let i = 0; i < 14 * Math.min(size, 2); i++) { const a = Math.random() * 6.28, d = Math.random() * 0.8 * size; FX.emit({ x: pos.x + Math.cos(a) * d, y: pos.y + (Math.random() - 0.3) * size, z: pos.z + Math.sin(a) * d, vx: Math.cos(a) * 3 * size, vy: 2 + Math.random() * 4 * size, vz: Math.sin(a) * 3 * size, life: 0.45 + Math.random() * 0.3, size: (1.2 + Math.random()) * Math.min(size, 1.8), color: i % 3 ? color : '#ffd070', tex: 'flame', grow: -0.4, drag: 0.94 }); }
   }
 
   // Летящий снаряд. target: функция, возвращающая Vector3 (или null)
@@ -504,7 +506,7 @@ export class Effects {
     if (debris) this.rocks(pos, Math.round(radius * 2), radius * 0.6);
   }
   // Камни-обломки, вылетающие из земли
-  rocks(pos, n, spread = 3, size = 0.25) {
+  rocks(pos, n, spread = 3, size = 0.14) {
     const mat = this._rockMat || (this._rockMat = new THREE.MeshStandardMaterial({ color: '#6e655a', roughness: 0.95, flatShading: true }));
     for (let i = 0; i < n; i++) {
       const m = new THREE.Mesh(new THREE.DodecahedronGeometry(size * (0.5 + Math.random()), 0), mat);
@@ -639,7 +641,7 @@ export class Effects {
     g.position.copy(pos);
     this.add(g, dur, (dt, k) => {
       const a = k < 0.2 ? k / 0.2 : (1 - k) / 0.8;
-      for (const mm of mats) mm.uniforms.uAlpha.value = a * 0.8;
+      for (const mm of mats) mm.uniforms.uAlpha.value = a * 0.42;
       for (let i = 0; i < 3; i++) FX.emit({ x: pos.x + (Math.random() - 0.5) * radius * 2, y: pos.y + 6 + Math.random() * 6, z: pos.z + (Math.random() - 0.5) * radius * 2, vy: -6, life: 1, size: 0.3, color: '#fff8d0' });
     });
     this.flash(pos.clone().setY(pos.y + 3), color, 50, dur, 22);
@@ -656,8 +658,8 @@ export class Effects {
     const start = pos.clone().setY(pos.y + 30);
     g.position.copy(start);
     this.add(g, 0.55, (dt, k) => { g.position.lerpVectors(start, pos.clone().setY(pos.y + 0.6), k * k); }, () => {
-      this.shockwave(pos, color, 7, 0.7);
-      this.flash(pos.clone().setY(pos.y + 2), color, 90, 0.6, 30);
+      this.shockwave(pos, color, 7, 0.7, false);
+      this.flash(pos.clone().setY(pos.y + 2), color, 60, 0.6, 30);
       onImpact && onImpact();
       this.add(g, 1.2, (dt, k) => { em.uniforms.uAlpha.value = 1 - k; g.position.y = pos.y + 0.6 - k * 2; });
     });

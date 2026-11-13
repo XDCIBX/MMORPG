@@ -76,13 +76,13 @@ function slashMat(color, color2) {
 }
 function vortexMat(c1, c2, arms) {
   return new THREE.ShaderMaterial({
-    uniforms: { uT: { value: 0 }, uA: { value: 1 }, uC1: { value: new THREE.Color(c1) }, uC2: { value: new THREE.Color(c2) } },
+    uniforms: { uT: { value: 0 }, uA: { value: 1 }, uArms: { value: arms }, uC1: { value: new THREE.Color(c1) }, uC2: { value: new THREE.Color(c2) } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: `uniform float uT; uniform float uA; uniform vec3 uC1; uniform vec3 uC2; varying vec2 vUv;
+    fragmentShader: `uniform float uT; uniform float uA; uniform float uArms; uniform vec3 uC1; uniform vec3 uC2; varying vec2 vUv;
       ${NOISE_GLSL}
       void main(){
         vec2 p = vUv * 2.0 - 1.0; float r = length(p); float a = atan(p.y, p.x);
-        float sw = a * ${arms.toFixed(1)} + (1.0 / (r + 0.12)) * 2.4 - uT * 4.0;
+        float sw = a * uArms + (1.0 / (r + 0.12)) * 2.4 - uT * 4.0;
         float n = fbm3(vec3(cos(a) * r * 3.0, sin(a) * r * 3.0, uT * 0.7));
         float band = smoothstep(0.1, 0.9, sin(sw + n * 3.0) * 0.5 + 0.5);
         float edge = smoothstep(1.0, 0.72, r);
@@ -191,8 +191,8 @@ Object.assign(Effects.prototype, {
   // Вспышка попадания: блик-звезда, искры нужной формы, кольцо
   spark(pos, color, opts = {}) {
     const n = opts.n == null ? 14 : opts.n, sp = opts.speed || 7, c2 = opts.color2 || '#ffffff';
-    FX.emit({ x: pos.x, y: pos.y, z: pos.z, life: 0.22, size: (opts.flare || 2.6), color: c2, tex: 'flare', rot: R() * 3, spin: 2, grow: 0.6 });
-    FX.emit({ x: pos.x, y: pos.y, z: pos.z, life: 0.3, size: (opts.flare || 2.6) * 0.8, color, tex: 'glow', grow: 0.8 });
+    FX.emit({ x: pos.x, y: pos.y, z: pos.z, life: 0.2, size: (opts.flare || 2.4), color: c2, tex: 'flare', rot: R() * 3, spin: 2, grow: 0.5, alpha: 0.8 });
+    FX.emit({ x: pos.x, y: pos.y, z: pos.z, life: 0.28, size: (opts.flare || 2.4) * 0.7, color, tex: 'glow', grow: 0.6, alpha: 0.55 });
     FX.burst(pos.x, pos.y, pos.z, n, { color: [color, c2], speed: sp, life: opts.life || 0.45, size: opts.size || 0.34, gravity: opts.gravity == null ? 9 : opts.gravity, tex: opts.tex || 'spark', drag: 0.93, up: opts.up || 1 });
     if (opts.ring !== false) {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.035, 5, 28), new THREE.MeshBasicMaterial({ color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
@@ -422,6 +422,20 @@ Object.assign(Effects.prototype, {
     this.scene.add(clone);
     it.update(0, 0, it);
     return clone;
+  },
+
+  // Прогрев шейдеров эффектов, чтобы первое применение умения не давало рывка
+  warmup(pos) {
+    const g = new THREE.Group(); g.position.copy(pos); g.scale.setScalar(0.0005);
+    const tri = new THREE.BufferGeometry();
+    tri.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3)); tri.setAttribute('aUV', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1], 2)); tri.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1], 2)); tri.setAttribute('normal', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1], 3));
+    const mats = [slashMat('#fff'), novaMat('#fff'), vortexMat('#fff', '#000', 3),
+      energyMat('#fff', { scale: 3, speed: 4 }), energyMat('#fff', { scale: 7, speed: 6 }), energyMat('#fff', { scale: 4, speed: 3, rimA: 0.2 }), energyMat('#fff', { scale: 5, speed: 5, rimA: 0.5 }), energyMat('#fff', { scale: 3, speed: 1.2, fadeV: true, rimA: 0.15 }), energyMat('#fff', { scale: 3, speed: 3, rimA: 0.9 }),
+      new THREE.MeshBasicMaterial({ map: circleTex('fire', 0), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+      new THREE.MeshBasicMaterial({ color: '#fff', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+      new THREE.MeshBasicMaterial({ color: '#fff', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })];
+    for (const m of mats) { const mesh = new THREE.Mesh(tri, m); mesh.frustumCulled = false; g.add(mesh); }
+    this.add(g, 0.6);
   },
 
   // Следы стремительного рывка

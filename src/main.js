@@ -344,6 +344,7 @@ class App {
     try {
       const moon = this.world.moon, mv = moon.visible;
       moon.visible = true;
+      if (this.game.effects.warmup) this.game.effects.warmup(this.game.player.pos);
       this.renderer.compile(this.scene, this.camera);
       moon.visible = mv;
     } catch (e) { /* */ }

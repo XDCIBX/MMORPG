@@ -85,29 +85,29 @@ export const ACTIONS = {
   // рубящий удар справа налево: замах с разворотом корпуса, выпад, проводка
   slash: { dur: 0.62, strike: 0.5, lunge: 0.35, keys: [
     [0.24, { shoulderR: R(-2.3, 0.4, -1.1), elbowR: R(-1.6), wristR: R(0.4), spine: R(0.05, 0.75, 0.05), chest: R(0, 0.2), shoulderL: R(-0.6, 0, 0.6), elbowL: R(-1.0), hipL: R(-0.35), kneeL: R(0.35), hipR: R(0.2), kneeR: R(0.15) }],
-    [0.42, { shoulderR: R(-0.9, -0.3, 0.55), elbowR: R(-0.15), wristR: R(-0.5), spine: R(0.25, -0.65, -0.05), chest: R(0, -0.2), shoulderL: R(-0.3, 0, 0.9), elbowL: R(-0.5), hipL: R(-0.6), kneeL: R(0.55), hipR: R(0.35), kneeR: R(0.2) }],
-    [0.64, { shoulderR: R(-0.4, -0.2, 0.65), elbowR: R(-0.3), wristR: R(-0.3), spine: R(0.2, -0.8), chest: R(0, -0.15), shoulderL: R(-0.2, 0, 0.7), hipL: R(-0.5), kneeL: R(0.45), hipR: R(0.3), kneeR: R(0.15) }],
+    [0.42, { shoulderR: R(-0.9, -0.3, 0.55), elbowR: R(-0.15), wristR: R(0.9), spine: R(0.25, -0.65, -0.05), chest: R(0, -0.2), shoulderL: R(-0.3, 0, 0.9), elbowL: R(-0.5), hipL: R(-0.6), kneeL: R(0.55), hipR: R(0.35), kneeR: R(0.2) }],
+    [0.64, { shoulderR: R(-0.4, -0.2, 0.65), elbowR: R(-0.3), wristR: R(0.8), spine: R(0.2, -0.8), chest: R(0, -0.15), shoulderL: R(-0.2, 0, 0.7), hipL: R(-0.5), kneeL: R(0.45), hipR: R(0.3), kneeR: R(0.15) }],
   ] },
   // обратный удар снизу вверх слева направо
   slash2: { dur: 0.58, strike: 0.5, lunge: 0.25, keys: [
     [0.25, { shoulderR: R(-1.2, -0.4, 1.05), elbowR: R(-1.9), wristR: R(0.2), spine: R(0.1, -0.7), chest: R(0, -0.2), shoulderL: R(-0.4, 0, 0.4), hipR: R(-0.35), kneeR: R(0.35) }],
-    [0.45, { shoulderR: R(-1.9, 0.3, -1.25), elbowR: R(-0.2), wristR: R(0.5), spine: R(0.05, 0.75), chest: R(0, 0.2), shoulderL: R(-0.3, 0, 1.0), hipR: R(-0.55), kneeR: R(0.5), hipL: R(0.3) }],
-    [0.66, { shoulderR: R(-2.1, 0.2, -1.1), elbowR: R(-0.4), spine: R(0, 0.8), shoulderL: R(-0.2, 0, 0.8) }],
+    [0.45, { shoulderR: R(-1.9, 0.3, -1.25), elbowR: R(-0.2), wristR: R(0.9), spine: R(0.05, 0.75), chest: R(0, 0.2), shoulderL: R(-0.3, 0, 1.0), hipR: R(-0.55), kneeR: R(0.5), hipL: R(0.3) }],
+    [0.66, { wristR: R(0.8), shoulderR: R(-2.1, 0.2, -1.1), elbowR: R(-0.4), spine: R(0, 0.8), shoulderL: R(-0.2, 0, 0.8) }],
   ] },
   // мощный удар сверху с прыжком-выпадом
   slam: { dur: 0.8, strike: 0.54, lunge: 0.55, hop: 0.25, keys: [
     [0.34, { shoulderR: R(-3.05, 0, -0.2), shoulderL: R(-3.05, 0, 0.2), elbowR: R(-1.3), elbowL: R(-1.3), wristR: R(0.5), spine: R(-0.35), neck: R(-0.2), hipL: R(-0.25), kneeL: R(0.6), hipR: R(0.1), kneeR: R(0.5) }],
-    [0.52, { shoulderR: R(-0.75, 0, -0.05), shoulderL: R(-0.8, 0, 0.05), elbowR: R(-0.1), elbowL: R(-0.1), wristR: R(-0.3), spine: R(0.65), neck: R(0.2), hipL: R(-0.8), kneeL: R(1.0), hipR: R(0.45), kneeR: R(0.55) }],
-    [0.72, { shoulderR: R(-0.7), shoulderL: R(-0.75), elbowR: R(-0.2), elbowL: R(-0.2), spine: R(0.55), hipL: R(-0.7), kneeL: R(0.9), hipR: R(0.4), kneeR: R(0.5) }],
+    [0.52, { shoulderR: R(-0.75, 0, -0.05), shoulderL: R(-0.8, 0, 0.05), elbowR: R(-0.1), elbowL: R(-0.1), wristR: R(1.1), spine: R(0.65), neck: R(0.2), hipL: R(-0.8), kneeL: R(1.0), hipR: R(0.45), kneeR: R(0.55) }],
+    [0.72, { wristR: R(1.0), shoulderR: R(-0.7), shoulderL: R(-0.75), elbowR: R(-0.2), elbowL: R(-0.2), spine: R(0.55), hipL: R(-0.7), kneeL: R(0.9), hipR: R(0.4), kneeR: R(0.5) }],
   ] },
   sweep: { dur: 0.7, strike: 0.42, spin: 1, keys: [
     [0.2, { spine: R(0.1, 0.9), shoulderR: R(-1.2, 0, -1.2), shoulderL: R(-1.3, 0.4, 0.6), elbowR: R(-0.6), elbowL: R(-0.7), hipL: R(-0.3), kneeL: R(0.5), hipR: R(-0.3), kneeR: R(0.5) }],
-    [0.5, { spine: R(0.15, -0.2), shoulderR: R(-1.5, 0, -1.4), shoulderL: R(-1.4, 0, 1.1), elbowR: R(-0.1), elbowL: R(-0.3), hipL: R(-0.45), kneeL: R(0.7), hipR: R(-0.45), kneeR: R(0.7) }],
-    [0.78, { spine: R(0.1, -0.8), shoulderR: R(-1.2, 0, 0.3), shoulderL: R(-1.2, 0, 0.9), elbowR: R(-0.3), elbowL: R(-0.3) }],
+    [0.5, { wristR: R(0.9), spine: R(0.15, -0.2), shoulderR: R(-1.5, 0, -1.4), shoulderL: R(-1.4, 0, 1.1), elbowR: R(-0.1), elbowL: R(-0.3), hipL: R(-0.45), kneeL: R(0.7), hipR: R(-0.45), kneeR: R(0.7) }],
+    [0.78, { wristR: R(0.8), spine: R(0.1, -0.8), shoulderR: R(-1.2, 0, 0.3), shoulderL: R(-1.2, 0, 0.9), elbowR: R(-0.3), elbowL: R(-0.3) }],
   ] },
   thrust: { dur: 0.5, strike: 0.52, lunge: 0.6, keys: [
     [0.3, { shoulderR: R(-0.6, 0.3, -0.4), elbowR: R(-2.0), spine: R(0, 0.45), chest: R(0, 0.15), hipR: R(0.2) }],
-    [0.52, { shoulderR: R(-1.6), elbowR: R(-0.02), spine: R(0.25, -0.35), chest: R(0, -0.1), hipL: R(-0.7), kneeL: R(0.7), hipR: R(0.4), kneeR: R(0.2) }],
+    [0.52, { wristR: R(1.25), shoulderR: R(-1.6), elbowR: R(-0.02), spine: R(0.25, -0.35), chest: R(0, -0.1), hipL: R(-0.7), kneeL: R(0.7), hipR: R(0.4), kneeR: R(0.2) }],
   ] },
   bash: { dur: 0.55, strike: 0.52, lunge: 0.45, keys: [
     [0.3, { shoulderL: R(-0.5, 0, 0.4), elbowL: R(-1.9), spine: R(0, -0.45), hipR: R(-0.3), kneeR: R(0.4) }],
@@ -152,8 +152,8 @@ export const ACTIONS = {
   leapslam: { dur: 1.0, lunge: 0.6, hop: 1.15, hopT: [0.12, 0.45], strike: 0.57, keys: [
     [0.13, { spine: R(0.4), hipL: R(-0.7), kneeL: R(1.2), hipR: R(-0.7), kneeR: R(1.2), shoulderR: R(0.3), shoulderL: R(0.3), elbowR: R(-0.8), elbowL: R(-0.8) }],
     [0.38, { shoulderR: R(-3.1, 0, -0.15), shoulderL: R(-3.1, 0, 0.15), elbowR: R(-1.5), elbowL: R(-1.5), wristR: R(0.6), spine: R(-0.5), neck: R(-0.25), hipL: R(-0.9), kneeL: R(1.5), hipR: R(0.3), kneeR: R(1.3) }],
-    [0.57, { shoulderR: R(-0.7), shoulderL: R(-0.75), elbowR: R(-0.05), elbowL: R(-0.05), wristR: R(-0.35), spine: R(0.75), neck: R(0.2), hipL: R(-1.0), kneeL: R(1.2), hipR: R(0.5), kneeR: R(0.8) }],
-    [0.82, { shoulderR: R(-0.7), shoulderL: R(-0.75), elbowR: R(-0.15), elbowL: R(-0.15), spine: R(0.65), hipL: R(-0.9), kneeL: R(1.1), hipR: R(0.45), kneeR: R(0.7) }],
+    [0.57, { shoulderR: R(-0.7), shoulderL: R(-0.75), elbowR: R(-0.05), elbowL: R(-0.05), wristR: R(1.15), spine: R(0.75), neck: R(0.2), hipL: R(-1.0), kneeL: R(1.2), hipR: R(0.5), kneeR: R(0.8) }],
+    [0.82, { wristR: R(1.05), shoulderR: R(-0.7), shoulderL: R(-0.75), elbowR: R(-0.15), elbowL: R(-0.15), spine: R(0.65), hipL: R(-0.9), kneeL: R(1.1), hipR: R(0.45), kneeR: R(0.7) }],
   ] },
   // напряжение силы: руки скрещены у груди — и рывком в стороны
   flex: { dur: 0.95, strike: 0.42, dip: [0.03, 0.42, 0.12], keys: [
@@ -189,22 +189,22 @@ export const ACTIONS = {
   smite: { dur: 0.95, lunge: 0.4, strike: 0.6, keys: [
     [0.22, { shoulderR: R(-3.0, 0, -0.2), elbowR: R(-0.15), wristR: R(0.2), shoulderL: R(-0.3, 0, 0.7), elbowL: R(-0.6), spine: R(-0.25), neck: R(-0.35), hipL: R(-0.2), kneeL: R(0.2) }],
     [0.44, { shoulderR: R(-3.05, 0, -0.2), elbowR: R(-0.35), wristR: R(0.4), shoulderL: R(-0.3, 0, 0.8), elbowL: R(-0.6), spine: R(-0.32), neck: R(-0.35), hipL: R(-0.25), kneeL: R(0.25) }],
-    [0.6, { shoulderR: R(-0.85, -0.15, 0.2), elbowR: R(-0.08), wristR: R(-0.45), shoulderL: R(0.3, 0, 0.7), elbowL: R(-0.7), spine: R(0.6, -0.3), neck: R(0.15), hipL: R(-0.8), kneeL: R(0.9), hipR: R(0.45), kneeR: R(0.4) }],
-    [0.8, { shoulderR: R(-0.7, -0.15, 0.25), elbowR: R(-0.15), wristR: R(-0.3), shoulderL: R(0.3, 0, 0.7), spine: R(0.5, -0.3), hipL: R(-0.7), kneeL: R(0.8), hipR: R(0.4), kneeR: R(0.35) }],
+    [0.6, { shoulderR: R(-0.85, -0.15, 0.2), elbowR: R(-0.08), wristR: R(1.1), shoulderL: R(0.3, 0, 0.7), elbowL: R(-0.7), spine: R(0.6, -0.3), neck: R(0.15), hipL: R(-0.8), kneeL: R(0.9), hipR: R(0.45), kneeR: R(0.4) }],
+    [0.8, { shoulderR: R(-0.7, -0.15, 0.25), elbowR: R(-0.15), wristR: R(1.0), shoulderL: R(0.3, 0, 0.7), spine: R(0.5, -0.3), hipL: R(-0.7), kneeL: R(0.8), hipR: R(0.4), kneeR: R(0.35) }],
   ] },
   // двойной росчерк: справа налево и обратно
   double: { dur: 0.8, lunge: 0.4, strike: 0.3, strike2: 0.58, keys: [
     [0.16, { shoulderR: R(-2.2, 0.4, -1.1), elbowR: R(-1.5), wristR: R(0.4), spine: R(0.05, 0.75), chest: R(0, 0.2), shoulderL: R(-0.6, 0, 0.6), elbowL: R(-1.0), hipL: R(-0.35), kneeL: R(0.35) }],
-    [0.3, { shoulderR: R(-0.9, -0.3, 0.6), elbowR: R(-0.15), wristR: R(-0.5), spine: R(0.25, -0.7), chest: R(0, -0.2), shoulderL: R(-0.3, 0, 0.9), hipL: R(-0.6), kneeL: R(0.55), hipR: R(0.35) }],
+    [0.3, { shoulderR: R(-0.9, -0.3, 0.6), elbowR: R(-0.15), wristR: R(0.9), spine: R(0.25, -0.7), chest: R(0, -0.2), shoulderL: R(-0.3, 0, 0.9), hipL: R(-0.6), kneeL: R(0.55), hipR: R(0.35) }],
     [0.44, { shoulderR: R(-1.1, -0.4, 1.05), elbowR: R(-1.7), wristR: R(0.2), spine: R(0.15, -0.8), chest: R(0, -0.2), shoulderL: R(-0.4, 0, 0.5), hipL: R(-0.6), kneeL: R(0.6), hipR: R(0.35) }],
-    [0.58, { shoulderR: R(-1.9, 0.3, -1.25), elbowR: R(-0.2), wristR: R(0.5), spine: R(0.05, 0.75), chest: R(0, 0.2), shoulderL: R(-0.3, 0, 1.0), hipR: R(-0.5), kneeR: R(0.5), hipL: R(0.3) }],
-    [0.78, { shoulderR: R(-2.1, 0.2, -1.1), elbowR: R(-0.4), spine: R(0, 0.8), shoulderL: R(-0.2, 0, 0.8) }],
+    [0.58, { shoulderR: R(-1.9, 0.3, -1.25), elbowR: R(-0.2), wristR: R(0.9), spine: R(0.05, 0.75), chest: R(0, 0.2), shoulderL: R(-0.3, 0, 1.0), hipR: R(-0.5), kneeR: R(0.5), hipL: R(0.3) }],
+    [0.78, { wristR: R(0.8), shoulderR: R(-2.1, 0.2, -1.1), elbowR: R(-0.4), spine: R(0, 0.8), shoulderL: R(-0.2, 0, 0.8) }],
   ] },
   // долгое вращение с вытянутым оружием
   spin2: { dur: 1.15, spin: 3, spinT: [0.08, 0.9], strike: 0.25, dip: [0.05, 0.9, 0.08], keys: [
     [0.12, { spine: R(0.1, 0.9), shoulderR: R(-1.2, 0, -1.2), shoulderL: R(-1.3, 0.4, 0.6), elbowR: R(-0.6), elbowL: R(-0.7), hipL: R(-0.3), kneeL: R(0.5), hipR: R(-0.3), kneeR: R(0.5) }],
-    [0.3, { spine: R(0.18, -0.1), shoulderR: R(-1.5, 0, -1.45), shoulderL: R(-1.2, 0, 1.3), elbowR: R(-0.05), elbowL: R(-0.3), hipL: R(-0.45, 0, 0.15), kneeL: R(0.7), hipR: R(-0.45, 0, -0.15), kneeR: R(0.7) }],
-    [0.85, { spine: R(0.18, -0.1), shoulderR: R(-1.5, 0, -1.45), shoulderL: R(-1.2, 0, 1.3), elbowR: R(-0.05), elbowL: R(-0.3), hipL: R(-0.45, 0, 0.15), kneeL: R(0.7), hipR: R(-0.45, 0, -0.15), kneeR: R(0.7) }],
+    [0.3, { wristR: R(0.9), spine: R(0.18, -0.1), shoulderR: R(-1.5, 0, -1.45), shoulderL: R(-1.2, 0, 1.3), elbowR: R(-0.05), elbowL: R(-0.3), hipL: R(-0.45, 0, 0.15), kneeL: R(0.7), hipR: R(-0.45, 0, -0.15), kneeR: R(0.7) }],
+    [0.85, { wristR: R(0.9), spine: R(0.18, -0.1), shoulderR: R(-1.5, 0, -1.45), shoulderL: R(-1.2, 0, 1.3), elbowR: R(-0.05), elbowL: R(-0.3), hipL: R(-0.45, 0, 0.15), kneeL: R(0.7), hipR: R(-0.45, 0, -0.15), kneeR: R(0.7) }],
   ] },
   // навесной выстрел в небо
   bowhigh: { dur: 0.85, strike: 0.55, keys: [
@@ -274,9 +274,9 @@ export const ACTIONS = {
   // жатва: широкий горизонтальный мах из-за спины
   reap: { dur: 0.9, lunge: 0.45, strike: 0.5, keys: [
     [0.3, { spine: R(0.0, 1.0), chest: R(0, 0.3), shoulderR: R(-1.3, 0.3, -1.5), elbowR: R(-0.9), wristR: R(0.3), shoulderL: R(-1.5, 0.6, -0.4), elbowL: R(-1.3), neck: R(0, -0.6), hipL: R(-0.3), kneeL: R(0.4), hipR: R(0.25, 0, -0.2), kneeR: R(0.35) }],
-    [0.5, { spine: R(0.3, -0.5), chest: R(0, -0.3), shoulderR: R(-1.4, 0, 0.3), elbowR: R(-0.1), wristR: R(-0.2), shoulderL: R(-1.3, 0, 0.5), elbowL: R(-0.7), neck: R(0, 0.3), hipL: R(-0.75), kneeL: R(0.85), hipR: R(0.45), kneeR: R(0.35) }],
-    [0.66, { spine: R(0.3, -1.0), chest: R(0, -0.35), shoulderR: R(-1.3, 0, 0.9), elbowR: R(-0.4), shoulderL: R(-1.0, 0, 0.9), elbowL: R(-0.9), neck: R(0, 0.5), hipL: R(-0.7), kneeL: R(0.8), hipR: R(0.4), kneeR: R(0.3) }],
-    [0.84, { spine: R(0.25, -0.9), chest: R(0, -0.3), shoulderR: R(-1.2, 0, 0.8), elbowR: R(-0.5), shoulderL: R(-0.9, 0, 0.8), elbowL: R(-0.9), hipL: R(-0.6), kneeL: R(0.7), hipR: R(0.35) }],
+    [0.5, { spine: R(0.3, -0.5), chest: R(0, -0.3), shoulderR: R(-1.4, 0, 0.3), elbowR: R(-0.1), wristR: R(0.95), shoulderL: R(-1.3, 0, 0.5), elbowL: R(-0.7), neck: R(0, 0.3), hipL: R(-0.75), kneeL: R(0.85), hipR: R(0.45), kneeR: R(0.35) }],
+    [0.66, { wristR: R(0.9), spine: R(0.3, -1.0), chest: R(0, -0.35), shoulderR: R(-1.3, 0, 0.9), elbowR: R(-0.4), shoulderL: R(-1.0, 0, 0.9), elbowL: R(-0.9), neck: R(0, 0.5), hipL: R(-0.7), kneeL: R(0.8), hipR: R(0.4), kneeR: R(0.3) }],
+    [0.84, { wristR: R(0.8), spine: R(0.25, -0.9), chest: R(0, -0.3), shoulderR: R(-1.2, 0, 0.8), elbowR: R(-0.5), shoulderL: R(-0.9, 0, 0.8), elbowL: R(-0.9), hipL: R(-0.6), kneeL: R(0.7), hipR: R(0.35) }],
   ] },
 };
 

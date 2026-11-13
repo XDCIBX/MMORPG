@@ -287,7 +287,7 @@ export const SK = {
       for (let i = 0; i < 3; i++) c.after(i * 0.5, () => { const g = c.feet(); c.E.nova(g, '#ff7a30', 3 + i * 1.5, 0.55, '#ffe0a0'); c.E.flash(c.P.center(), '#ff7030', 22, 0.3, 10); FX.burst(g.x, g.y + 1.2, g.z, 12, { color: ['#ff9040', '#ffe0a0'], speed: 3, up: 2.5, life: 1.0, size: 0.3, tex: 'sparkle' }); });
       c.E.groundCrack(c.feet(), '#ff7020', 2.4, 2.2);
       c.E.risingRunes(c.feet(), '#a0ff90', 0.9, 1.6, { follow: root, tex: 'sparkle', n: 3, rate: 0.6, size: 0.36 });
-      c.E.fireColumn(c.feet(), 0.7, 2.2, 1.2, ['#ff5a10', '#ffb030', '#ffe890'], false);
+      c.E.fireColumn(c.feet(), 0.45, 2.0, 1.0, ['#ff5a10', '#ffb030'], false);
     },
   },
   // Рунный вихрь: гном вертится волчком, огненные кольца и руны разлетаются
@@ -448,8 +448,8 @@ export const SK = {
     swing(c, pos, yaw) { c.E.slash(c.fwd(0.2, 1.3), yaw, '#ffd860', { r: 2.7, span: 2.6, roll: -1.15, width: 0.5, dur: 0.34, color2: '#ffffff', travel: 0.8 }); },
     hit(c, p) {
       const g = c.ground(p);
-      c.E.magicCircle(g, 'holy', 2.2, 0.9); c.E.pillar(g, '#ffe8a0', 0.8, 12, 0.6); c.E.godRays(g, '#ffe8a0', 0.8, 1.2);
-      c.E.spark(p, '#ffe080', { n: 16, tex: 'sparkle', flare: 3.4, gravity: 2 });
+      c.E.magicCircle(g, 'holy', 2.2, 0.9); c.E.pillar(g, '#ffe8a0', 0.45, 10, 0.5);
+      c.E.spark(p, '#ffe080', { n: 16, tex: 'sparkle', flare: 2.4, gravity: 2 });
       FX.burst(p.x, p.y + 0.3, p.z, 9, { color: ['#ffffff', '#fff0c0'], speed: 3, up: 2, life: 1.4, size: 0.5, gravity: 2.5, drag: 0.95, tex: 'feather' });
       for (let i = 0; i < 5; i++) c.after(0.08 + i * 0.05, () => wisp(c, p, () => c.P.center(), '#a0ff90', { tex: 'sparkle', dur: 0.5, arc: 1.6, lift: 0.8 }));
       c.game.shake(0.25);
@@ -458,10 +458,10 @@ export const SK = {
   // Свет небес: воин преклоняет колено, с неба нисходит луч, за спиной раскрываются крылья
   w_divine: {
     anim: 'pray',
-    cast(c) { c.E.magicCircle(c.feet(), 'holy', 3, 2.2, { follow: c.P.model.root, column: 3 }); },
+    cast(c) { c.E.magicCircle(c.feet(), 'holy', 3, 2.2, { follow: c.P.model.root }); },
     self(c) {
       const g = c.feet(), root = c.P.model.root;
-      c.E.godRays(g, '#fff0a0', 1.8, 2.2); c.E.beam2(SKY(g, 20), g.clone().setY(g.y + 0.2), '#fff0b0', { width: 0.7, dur: 1.0 });
+      c.E.godRays(g, '#fff0a0', 1.8, 1.6); c.E.beam2(SKY(g, 20), g.clone().setY(g.y + 0.2), '#fff0b0', { width: 0.22, dur: 1.0 });
       c.E.wings(c.P.model.j.chest, '#ffe8a0', 2.2);
       halo(c, root, '#ffe8a0', 2.6, 0.2, 0.75, 1.0);
       c.E.add(null, 1.6, () => { if (R() < 0.35) { const a = R() * TAU, d = R() * 1.8; FX.emit({ x: root.position.x + Math.cos(a) * d, y: root.position.y + 3.4 + R(), z: root.position.z + Math.sin(a) * d, vx: (R() - 0.5), vy: -1.1, vz: (R() - 0.5), life: 1.8, size: 0.5, color: '#ffffff', tex: 'feather', drag: 0.99, spin: (R() - 0.5) * 3 }); } });
@@ -869,7 +869,7 @@ Object.assign(SK, {
     self(c) {
       const root = c.P.model.root, g = c.feet();
       for (let i = 0; i < 3; i++) halo(c, root, '#ffe8a0', 0.15, 2.5, 0.85 - i * 0.12, 0.8, i * 0.22);
-      c.E.pillar(g, '#fff0a0', 1.0, 12, 0.9); c.E.nova(g, '#ffe080', 3.5, 0.6, '#ffffff');
+      c.E.pillar(g, '#fff0a0', 0.5, 12, 0.9); c.E.nova(g, '#ffe080', 3.5, 0.6, '#ffffff');
       const h = c.head(c.P); h.y += 0.5;
       FX.emit({ x: h.x, y: h.y, z: h.z, life: 0.9, size: 2.6, color: '#fff0c0', tex: 'sparkle', rot: 0, spin: 0 });
       FX.emit({ x: h.x, y: h.y, z: h.z, life: 0.5, size: 3.4, color: '#ffe080', tex: 'flare', rot: 0, spin: 1.5 });
@@ -895,11 +895,11 @@ Object.assign(SK, {
     },
     impact(c, p) {
       const r = c.skill.radius;
-      c.E.beam2(p.clone().setY(p.y + 26), p, '#ffe080', { width: 1.4, dur: 0.7 });
+      c.E.beam2(p.clone().setY(p.y + 26), p, '#ffe080', { width: 0.5, dur: 0.6 });
       c.E.nova(p, '#ffb030', r * 1.15, 0.8, '#ffffff'); c.after(0.15, () => c.E.nova(p, '#ff7020', r * 0.8, 0.6));
-      c.E.fireColumn(p, r * 0.3, 9, 1.1, ['#ffb020', '#ffe070', '#ffffff']); c.E.groundCrack(p, '#ffa020', r * 0.6, 3);
+      c.E.fireColumn(p, r * 0.22, 8, 1.0, ['#ff9a20', '#ffd060', '#ffe890']); c.E.groundCrack(p, '#ffa020', r * 0.6, 3);
       for (let i = 0; i < 8; i++) { const a = i / 8 * TAU; c.E.pillar(c.ground(V(p.x + Math.cos(a) * r * 0.7, 0, p.z + Math.sin(a) * r * 0.7)), '#ffe080', 0.4, 10, 0.6); }
-      c.E.dustRing(p, r, '#7a6a50', 26); c.E.screenFlash('#ffe0a0', 0.3, 0.6);
+      c.E.dustRing(p, r, '#7a6a50', 26); c.E.screenFlash('#ffe0a0', 0.16, 0.5);
     },
     each(c, e) { c.E.spark(e.center(), '#ffd060', { n: 8, tex: 'flame', flare: 2.4, light: false, gravity: -2 }); },
   },
@@ -1060,7 +1060,7 @@ Object.assign(SK, {
       c.E.magicCircle(pos, 'death', 3.8, 2.6, { color: '#60ffb0', column: 2 }); c.E.magicCircle(pos.clone().setY(pos.y + 9), 'shadow', 2.6, 1.4, { color: '#40c080', spin: -2 });
       cloud(c, pos, 2.6, ['#0a1410', '#14241c'], 14, 2.2, { size: 2.6, alpha: 0.55, h: 0.2 });
       for (let i = 0; i < 4; i++) c.after(i * 0.09, () => { const a = R() * TAU; c.E.bolt(SKY(pos, 20), V(pos.x + Math.cos(a) * 1.5, pos.y, pos.z + Math.sin(a) * 1.5), '#60ffb0', { width: 0.14, branches: 3, dur: 0.3 }); });
-      c.E.groundCrack(pos, '#40ff80', 2.8, 2.6); c.E.pillar(pos, '#30c070', 1.2, 14, 1.0);
+      c.E.groundCrack(pos, '#40ff80', 2.8, 2.6); c.E.pillar(pos, '#30c070', 0.8, 14, 1.0);
       c.E.fireColumn(pos, 1.0, 5, 1.1, GREEN_FIRE, true);
       c.after(0.15, () => { c.E.nova(pos, '#50ffa0', 6, 0.7, '#ffffff'); c.E.screenFlash('#30c080', 0.2, 0.5); eruptRocks(c, pos, 12, 1.6, '#3a4a40'); });
       c.game.shake(0.7);
