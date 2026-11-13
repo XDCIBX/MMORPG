@@ -5,6 +5,7 @@ import { terrainDetail, waterNormal, terrainLayers } from '../core/textures.js';
 import { WORLD_HALF, CITIES, ROADS, BIOMES, BIOME_LIST, BIOME_SEEDS, LAKES, LAVA_POOLS, SECRET_SHOPS, POIS } from '../data/world.js';
 
 import { IS_PHONE } from '../core/device.js';
+import { generateHeights, decodeBakedHeights } from './heightmap.js';
 
 const N = IS_PHONE ? 320 : 480; // сегментов по стороне (на телефонах меньше)
 const SIZE = WORLD_HALF * 2;
@@ -43,93 +44,17 @@ export class Terrain {
   }
 
   compute() {
-    const V = this.V, n = this.noise;
-    const bw = new Float32Array(BIOME_LIST.length);
-    const raw = new Float32Array(V * V);
-    for (let j = 0; j < V; j++) {
-      for (let i = 0; i < V; i++) {
-        const x = -WORLD_HALF + i * CELL, z = -WORLD_HALF + j * CELL;
-        const idx = j * V + i;
-        this.biomeWeightsAt(x, z, bw);
-        let amp = 0, best = 0, bi = 0, mount = 0;
-        for (let b = 0; b < bw.length; b++) {
-          amp += bw[b] * BIOME_LIST[b].amp;
-          if (bw[b] > best) { best = bw[b]; bi = b; }
-          this.biomeW[idx * bw.length + b] = bw[b];
-        }
-        mount = bw[BIOMES.highland.id] + bw[BIOMES.snow.id] + bw[BIOMES.volcanic.id];
-        this.biome[idx] = bi;
-        let h = 4.5;
-        h += (n.fbm(x * 0.0035, z * 0.0035, 5) * 0.5 + 0.5) * amp * 1.1;
-        h += Math.max(0, n.ridge(x * 0.006 + 10, z * 0.006 - 7, 4) - 0.3) * amp * 1.1 * mount;
-        h += n.fbm(x * 0.03, z * 0.03, 2) * 0.6;
-        // Болота — почти плоские с лужами
-        const sw = bw[BIOMES.swamp.id];
-        h = lerp(h, 0.5 + n.fbm(x * 0.025, z * 0.025, 3) * 1.6, smoothstep(0.3, 0.8, sw));
-        // Горы по краю мира
-        const m = Math.max(Math.abs(x), Math.abs(z));
-        const edge = smoothstep(600, 770, m);
-        h += edge * (55 + n.ridge(x * 0.01, z * 0.01, 4) * 60);
-        // скальные гребни и уступы-пласты на высоких склонах
-        const crag = Math.min(1, mount + edge);
-        if (crag > 0.01) {
-          const hi = smoothstep(20, 46, h);
-          h += (n.ridge(x * 0.021 + 3, z * 0.021 + 5, 3) - 0.35) * 9 * crag * hi;
-          const step = 5.5, tt = h / step, fl = Math.floor(tt), fr = tt - fl;
-          h = lerp(h, (fl + smoothstep(0.2, 0.8, fr)) * step, 0.5 * crag * hi);
-        }
-        // Озёра и лава
-        for (const L of LAKES.concat(LAVA_POOLS)) {
-          const d = Math.hypot(x - L.x, z - L.z);
-          const t = smoothstep(L.r * 1.35, L.r * 0.35, d);
-          if (t > 0) h = lerp(h, -L.depth, t);
-        }
-        raw[idx] = h;
-        // дороги
-        let rd = 1e9;
-        for (const road of ROADS) {
-          for (let k = 0; k < road.length - 1; k++) {
-            const d = distToSegment(x, z, road[k][0], road[k][1], road[k + 1][0], road[k + 1][1]);
-            if (d < rd) rd = d;
-          }
-        }
-        const wob = n.noise(x * 0.05, z * 0.05) * 1.2;
-        this.road[idx] = smoothstep(5.5 + wob, 2.5 + wob, rd);
-      }
-    }
-    // Сглаживание (для дорог и площадок)
-    const blur = new Float32Array(V * V);
-    const R = 3;
-    for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) {
-      let s = 0, c = 0;
-      for (let dj = -R; dj <= R; dj++) for (let di = -R; di <= R; di++) {
-        const ii = clamp(i + di, 0, V - 1), jj = clamp(j + dj, 0, V - 1);
-        s += raw[jj * V + ii]; c++;
-      }
-      blur[j * V + i] = s / c;
-    }
-    const flatSpots = [];
-    for (const c of CITIES) flatSpots.push({ x: c.x, z: c.z, r: c.r + 10, fall: 45, city: true });
-    for (const s of SECRET_SHOPS) flatSpots.push({ x: s.x, z: s.z, r: 12, fall: 18 });
-    for (const p of POIS) flatSpots.push({ x: p.x, z: p.z, r: p.r * 0.8, fall: 20 });
-    for (const f of flatSpots) {
-      const ci = Math.round((f.x + WORLD_HALF) / CELL), cj = Math.round((f.z + WORLD_HALF) / CELL);
-      f.h = Math.max(f.city ? 3 : 1.2, blur[cj * V + ci]);
-    }
-    for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) {
-      const idx = j * V + i;
-      const x = -WORLD_HALF + i * CELL, z = -WORLD_HALF + j * CELL;
-      let h = lerp(raw[idx], Math.max(blur[idx], raw[idx] < 0 ? raw[idx] : 0.6), this.road[idx] * 0.8);
-      for (const f of flatSpots) {
-        const d = Math.hypot(x - f.x, z - f.z);
-        if (d < f.r + f.fall) {
-          const t = smoothstep(f.r + f.fall, f.r, d);
-          h = lerp(h, f.h, t);
-        }
-      }
-      this.h[idx] = h;
-    }
-    this.flatSpots = flatSpots;
+    // высоты, биомы и дороги считает чистый модуль heightmap.js (его же можно запустить в node)
+    const opts = Object.assign({}, (typeof window !== 'undefined' && window.__terrOpts) || {});
+    // запечённый рельеф (models/terrain_heights.js): эрозия сотнями тысяч капель посчитана заранее
+    const B = typeof window !== 'undefined' && window.__TERRAIN_H && !opts.noBake ? decodeBakedHeights(window.__TERRAIN_H) : null;
+    if (B) opts.baked = B;
+    const r = generateHeights(N, WORLD_HALF, opts);
+    this.baked = !!r.baked;
+    this.h = r.h; this.biome = r.biome; this.biomeW = r.biomeW; this.road = r.road;
+    this.flatSpots = r.flatSpots;
+    this.mountMask = r.mask;
+    this.genTiming = r.timing;
   }
 
   getHeight(x, z) {
@@ -208,17 +133,22 @@ export class Terrain {
           tmp[c] = lerp(B.grass[c], B.grass2[c], patch);
           tmp[c] = lerp(tmp[c], B.dirt[c], dirtPatch * 0.6);
         }
-        // скалы на крутых склонах
-        const rockT = smoothstep(0.86, 0.68, ny);
+        // скалы на крутых склонах; чем выше, тем на более пологих выходит камень (выше границы леса)
+        const alt = smoothstep(30, 65, h);
+        const rockT = smoothstep(0.78 + alt * 0.1, 0.6 + alt * 0.1, ny);
         for (let c = 0; c < 3; c++) tmp[c] = lerp(tmp[c], B.rock[c] * (0.85 + patch * 0.3), rockT);
         r += tmp[0] * w; gg += tmp[1] * w; b += tmp[2] * w;
         kr += B.rock[0] * w; kg += B.rock[1] * w; kb += B.rock[2] * w;
       }
       // снег на высоких пиках
       const hotW = this.biomeW[idx * nb + BIOMES.volcanic.id] + this.biomeW[idx * nb + BIOMES.swamp.id];
-      const snowT = smoothstep(48, 70, h) * smoothstep(0.55, 0.8, ny) * (1 - Math.min(1, hotW * 1.5));
+      // снеговая линия: в Ледяном пределе низко, в остальных горах — только на вершинах; на крутых гранях снег не держится
+      const snowBW = this.biomeW[idx * nb + BIOMES.snow.id];
+      const sLine = lerp(64, 36, snowBW);
+      const snowT = smoothstep(sLine, sLine + 18, h) * smoothstep(0.74, 0.88, ny) * (1 - Math.min(1, hotW * 1.5));
       rockA[idx * 4] = Math.pow(kr, 2.2); rockA[idx * 4 + 1] = Math.pow(kg, 2.2); rockA[idx * 4 + 2] = Math.pow(kb, 2.2);
-      rockA[idx * 4 + 3] = 1 - Math.min(1, hotW * 1.5);
+      // a: можно ли снег (0 — вулкан/болото) и доля снежного биома: a = allow · (0.5 + 0.5·snow)
+      rockA[idx * 4 + 3] = (1 - Math.min(1, hotW * 1.5)) * (0.5 + 0.5 * snowBW);
       r = lerp(r, 0.92, snowT); gg = lerp(gg, 0.94, snowT); b = lerp(b, 0.98, snowT);
       // песок/ил у воды
       const swampW = this.biomeW[idx * nb + BIOMES.swamp.id];
@@ -234,7 +164,8 @@ export class Terrain {
       }
       // веса слоёв рельефа: дёрн / скала / земля
       {
-        const rockW = Math.max(smoothstep(0.86, 0.66, ny), snowT * 0.3, (this.biomeW[idx * nb + BIOMES.volcanic.id]) * 0.5);
+        const altW = smoothstep(30, 65, h);
+        const rockW = Math.max(smoothstep(0.78 + altW * 0.1, 0.58 + altW * 0.1, ny), snowT * 0.3, (this.biomeW[idx * nb + BIOMES.volcanic.id]) * 0.5);
         const dirtW = Math.max(dirtPatch * 0.7, this.road[idx], shore, swampW * 0.4);
         const sum = 1 + rockW * 2 + dirtW * 1.5;
         splat[idx * 3] = 1 / sum; splat[idx * 3 + 1] = rockW * 2 / sum; splat[idx * 3 + 2] = dirtW * 1.5 / sum;
@@ -288,7 +219,8 @@ export class Terrain {
           // скала по крутизне склона — попиксельно, с рваной границей по фактуре
           vec3 nW = normalize(vWNrm);
           float slope = 1.0 - nW.y;
-          float rk = smoothstep(0.17, 0.3, slope + (hr - 0.5) * 0.14 + (d2.g - 0.5) * 0.07);
+          float altR = smoothstep(30.0, 65.0, vWPos.y);
+          float rk = smoothstep(0.23 - altR * 0.1, 0.37 - altR * 0.1, slope + (hr - 0.5) * 0.14 + (d2.g - 0.5) * 0.07);
           rk = max(rk, w.y * 0.6);
           // крупная фактура скал, видимая издалека
           float hm = texture2D(tLayers, vWPos.xz * 0.011).g * an.y + texture2D(tLayers, vWPos.zy * 0.011).g * an.x + texture2D(tLayers, vWPos.xy * 0.011).g * an.z;
@@ -308,7 +240,9 @@ export class Terrain {
           diffuseColor.rgb *= shade * macro;
           diffuseColor.rgb = mix(diffuseColor.rgb, rockCol, rk);
           // снег на высоких пологих местах, рваная кромка
-          float sn = smoothstep(42.0, 58.0, vWPos.y + (d2.g - 0.5) * 16.0 + (hm - 0.5) * 8.0) * smoothstep(0.52, 0.74, nW.y + (hr - 0.5) * 0.25) * vRock.a;
+          float allowS = smoothstep(0.0, 0.5, vRock.a), swB = clamp(vRock.a * 2.0 - 1.0, 0.0, 1.0);
+          float sLine = mix(64.0, 36.0, swB);
+          float sn = smoothstep(sLine, sLine + 16.0, vWPos.y + (d2.g - 0.5) * 16.0 + (hm - 0.5) * 8.0) * smoothstep(0.72, 0.86, nW.y + (hr - 0.5) * 0.25) * allowS;
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.9, 0.96) * mix(0.9, 1.05, d1.r), sn);
           gRock = rk * (1.0 - sn); gSnow = sn;`)
         .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>

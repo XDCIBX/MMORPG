@@ -52,7 +52,7 @@ export const SPAWNS = [
   { type: 'demon', x: 330, z: -620, r: 50, lvl: [79, 86], count: 10 },
   { type: 'frostgiant', x: -470, z: -600, r: 50, lvl: [84, 90], count: 8 },
   { type: 'cultist', x: -160, z: -650, r: 45, lvl: [88, 94], count: 10 },
-  { type: 'drake', x: 120, z: -690, r: 55, lvl: [93, 100], count: 9 },
+  { type: 'drake', x: 120, z: -655, r: 50, lvl: [93, 100], count: 9 },
 ];
 
 export const BOSSES = [
