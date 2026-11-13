@@ -5,13 +5,16 @@ import { equipVisual, animateGear } from './gear.js';
 import { basicMat, gemMat, glowMat, boneMat, clothMat, metalMat } from './materials.js';
 import { clamp, lerp, smoothstep } from '../core/util.js';
 import { FX } from '../fx/particles.js';
-import { scaleTex, furTex, stoneWall } from '../core/textures.js';
+import { scaleTex, furTex, stoneWall, terrainLayers } from '../core/textures.js';
+import { fireMat, NOISE_GLSL } from '../fx/effects.js';
+import { rockGeo } from '../world/vegetation.js';
 import { Creature } from './creature_base.js';
 import { horseFromDef } from './horse.js';
 import { mergeToJoints } from './optimize.js';
 import { Beast } from './beasts.js';
 import { Quad } from './quad.js';
 import { Spider as SpiderModel } from './spider.js';
+import { DragonQ } from './dragon.js';
 
 const cmats = new Map();
 function furMat(color, rough = 0.92) {
@@ -82,53 +85,122 @@ class Spider extends Creature {
 }
 
 // ---------- Голем ----------
+// Камень голема: трипланарная фактура в координатах глыбы (не «плывёт» при движении),
+// раскалённые прожилки в трещинах, пульс света
+const golemMats = new Map();
+function golemRockMat(glow, magma) {
+  const k = glow + (magma ? 'm' : '');
+  if (golemMats.has(k)) return golemMats.get(k);
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 });
+  const tex = terrainLayers();
+  const gc = new THREE.Color(glow);
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.tLayers = { value: tex };
+    sh.uniforms.uGlow = { value: gc };
+    sh.uniforms.uTime = golemTime;
+    sh.uniforms.uMagma = { value: magma ? 1 : 0 };
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vOP; varying vec3 vON;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvOP = position; vON = normal;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform sampler2D tLayers; uniform vec3 uGlow; uniform float uTime; uniform float uMagma; varying vec3 vOP; varying vec3 vON; float gCrack;\n' + NOISE_GLSL)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        // зернистость и пятна породы
+        float g1 = fbm3(vOP * 3.1);
+        float g2 = fbm3(vOP * 9.0 + 4.0);
+        diffuseColor.rgb *= mix(0.6, 1.2, g1) * mix(0.82, 1.12, g2);
+        // трещины: тонкие ветвящиеся линии по изолиниям шума
+        float cn = fbm3(vOP * 0.9 + vec3(3.1, 0.0, 1.7));
+        float cn2 = fbm3(vOP * 2.0 - vec3(1.3, 2.0, 0.4));
+        gCrack = max(smoothstep(0.012, 0.0, abs(cn - 0.5)), smoothstep(0.007, 0.0, abs(cn2 - 0.5)) * 0.6 * step(0.5, cn));
+        diffuseColor.rgb *= 1.0 - gCrack * 0.75;`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        float pulse = 0.7 + 0.3 * sin(uTime * 2.4 + vOP.y * 3.0 + vOP.x * 2.0);
+        totalEmissiveRadiance += uGlow * gCrack * (2.2 + uMagma) * pulse;`);
+  };
+  m.customProgramCacheKey = () => 'golemrock';
+  golemMats.set(k, m);
+  return m;
+}
+export const golemTime = { value: 0 };
+const golemGeoCache = new Map();
+function golemGeos(tint) {
+  const k = tint.join(',');
+  if (golemGeoCache.has(k)) return golemGeoCache.get(k);
+  let sd = 4242;
+  const r = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+  const list = [0, 1, 2, 3, 4].map(() => { const g = rockGeo(r, tint, 'big'); g.computeBoundingSphere(); return g; });
+  golemGeoCache.set(k, list);
+  return list;
+}
+
 class Golem extends Creature {
   constructor(def) {
     super();
-    const st = stoneWall('#9a948a', 'g');
-    const rock = new THREE.MeshStandardMaterial({ color: def.fur, map: st.map, normalMap: st.normalMap, roughness: 0.95, flatShading: true });
-    const glow = gemMat(def.fur2 || '#ffaa40', 3);
+    const tintC = new THREE.Color(def.fur);
+    const tint = [tintC.r ** (1 / 2.2), tintC.g ** (1 / 2.2), tintC.b ** (1 / 2.2)];
+    const glowC = def.fur2 || '#ffaa40';
+    const rock = golemRockMat(glowC, false);
+    const glow = gemMat(glowC, 3);
+    const core = fireMat ? fireMat(glowC, '#fff0b0', { disp: 0.25 }) : glowMat(glowC, 0.6);
     this.height = 2.6;
     const torso = this.pivot(this.body, 0, 1.45, 0);
     this.torso = torso;
+    let seed = Math.floor(Math.random() * 1e6);
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const geos = golemGeos(tint);
     const rk = (r, parent, x, y, z, sx = 1, sy = 1, sz = 1) => {
-      const g = new THREE.DodecahedronGeometry(r, 0);
+      const g = geos[Math.floor(rnd() * geos.length)];
       const mm = this.m(g, rock, parent, x, y, z);
-      mm.scale.set(sx, sy, sz);
-      mm.rotation.set(Math.random(), Math.random(), Math.random());
+      mm.scale.set(sx * r * 0.95, sy * r * 1.15, sz * r * 0.95);
+      mm.rotation.set(rnd() * 6, rnd() * 6, rnd() * 6);
       return mm;
     };
-    rk(0.55, torso, 0, 0.25, 0, 1.2, 1, 0.9);
-    rk(0.4, torso, 0, -0.25, 0, 1.0, 0.8, 0.8);
-    this.m(new THREE.OctahedronGeometry(0.16), glow, torso, 0, 0.25, 0.42);
-    this.m(new THREE.SphereGeometry(0.3, 12, 10), glowMat(def.fur2 || '#ffaa40', 0.3), torso, 0, 0.25, 0.4);
-    const head = this.pivot(torso, 0, 0.8, 0.1);
+    // магмовое ядро светится в щелях между глыбами
+    const coreM = (r, parent, x, y, z, sx = 1, sy = 1, sz = 1) => { const c = this.m(new THREE.IcosahedronGeometry(r, 2), core, parent, x, y, z); c.scale.set(sx, sy, sz); c.castShadow = false; return c; };
+    const coreBody = coreM(0.34, torso, 0, 0.08, -0.02, 1.25, 1.3, 0.85);
+    coreBody.material = core; core.uniforms.uAlpha.value = 0.75;
+    // грудь: несколько плит, а не один ком
+    rk(0.44, torso, 0, 0.34, 0.16, 1.35, 0.95, 0.75);
+    rk(0.3, torso, -0.18, 0.02, 0.2, 0.9, 0.9, 0.7);
+    rk(0.3, torso, 0.18, 0.02, 0.2, 0.9, 0.9, 0.7);
+    rk(0.4, torso, -0.32, 0.25, -0.06, 0.9, 1.0, 0.9);
+    rk(0.4, torso, 0.32, 0.25, -0.06, 0.9, 1.0, 0.9);
+    rk(0.36, torso, 0, -0.2, 0.05, 1.1, 0.85, 0.85);
+    rk(0.3, torso, -0.2, -0.38, -0.05, 0.9, 0.8, 0.9);
+    rk(0.3, torso, 0.2, -0.38, -0.05, 0.9, 0.8, 0.9);
+    rk(0.38, torso, 0, 0.42, -0.25, 1.4, 0.9, 0.8);
+    this.m(new THREE.OctahedronGeometry(0.1), glow, torso, 0, 0.3, 0.55);
+    const head = this.pivot(torso, 0, 0.82, 0.12);
     this.head = head;
-    rk(0.26, head, 0, 0, 0, 1, 0.8, 0.9);
-    for (const sx of [-1, 1]) this.m(ellipsoid(0.05, 0.03, 0.03), glow, head, sx * 0.1, 0.02, 0.2);
+    rk(0.25, head, 0, 0, 0, 1.05, 0.8, 0.95);
+    rk(0.14, head, 0, 0.16, -0.05, 1.4, 0.5, 1.0);
+    for (const sx of [-1, 1]) this.m(ellipsoid(0.05, 0.026, 0.03), glow, head, sx * 0.1, 0.02, 0.21);
     this.arms = [];
     for (const sx of [-1, 1]) {
-      const sh = this.pivot(torso, sx * 0.72, 0.45, 0);
-      rk(0.3, sh, 0, 0, 0);
-      rk(0.24, sh, 0, -0.4, 0, 0.9, 1.3, 0.9);
+      const sh = this.pivot(torso, sx * 0.74, 0.45, 0);
+      rk(0.34, sh, 0, 0.05, 0, 1.15, 0.95, 1.05);
+      coreM(0.16, sh, 0, -0.35, 0, 1, 2.0, 1);
+      rk(0.24, sh, 0, -0.42, 0, 0.9, 1.3, 0.9);
       const el = this.pivot(sh, 0, -0.7, 0);
-      rk(0.26, el, 0, -0.2, 0.05, 1, 1.3, 1);
-      rk(0.32, el, 0, -0.65, 0.05);
+      coreM(0.15, el, 0, -0.3, 0.04, 1, 2.0, 1);
+      rk(0.25, el, 0, -0.2, 0.05, 1, 1.3, 1);
+      rk(0.34, el, 0, -0.66, 0.06, 1.1, 1.0, 1.1);   // кулак
       this.arms.push({ sh, el, sx });
     }
     this.legs = [];
     for (const sx of [-1, 1]) {
-      const hp = this.pivot(this.body, sx * 0.35, 1.0, 0);
-      rk(0.3, hp, 0, -0.25, 0, 1, 1.3, 1);
+      const hp = this.pivot(this.body, sx * 0.36, 1.0, 0);
+      coreM(0.16, hp, 0, -0.35, 0, 1, 2.2, 1);
+      rk(0.3, hp, 0, -0.22, 0, 1, 1.3, 1);
       const kn = this.pivot(hp, 0, -0.55, 0);
-      rk(0.3, kn, 0, -0.2, 0, 1, 1.2, 1);
-      rk(0.25, kn, 0, -0.42, 0.08, 1.2, 0.6, 1.4);
+      rk(0.29, kn, 0, -0.18, 0, 1, 1.2, 1);
+      rk(0.26, kn, 0, -0.42, 0.08, 1.25, 0.6, 1.45);
       this.legs.push({ hp, kn, sx });
     }
-    // руны
-    for (let i = 0; i < 5; i++) this.m(new THREE.BoxGeometry(0.04, 0.14, 0.02), glow, torso, (i - 2) * 0.18, -0.05 + Math.abs(i - 2) * 0.06, 0.48);
   }
   update(dt, st = {}) {
+    golemTime.value = performance.now() * 0.001;
     this.baseUpdate(dt);
     const speed = st.speed || 0;
     const blend = clamp(Math.abs(speed) / 5, 0, 1.2);
@@ -423,7 +495,7 @@ export function buildCreature(def, opts = {}) {
     case 'golem': c = new Golem(def); break;
     case 'wraith': c = new Wraith(def); break;
     case 'elemental': c = new Elemental(def); break;
-    case 'dragon': c = new Dragon(def); break;
+    case 'dragon': c = new DragonQ(def); break;
     case 'lich': {
       const lichDef = {
         spec: { headType: 'skull', limb: 0.65, eyes: { color: def.eye || '#60e0ff' }, hair: { style: 'none' }, base: { shirt: null, pants: null, boots: null } },
@@ -440,7 +512,7 @@ export function buildCreature(def, opts = {}) {
 }
 
 export { humanoidMob };
-void clothMat; void Beast; void Spider;
+void clothMat; void Beast; void Spider; void Dragon;
 
 // Склеить неподвижные детали модели (гуманоиды и звери), не трогая анимируемые части
 export function optimizeModel(c) {

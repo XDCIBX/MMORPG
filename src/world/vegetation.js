@@ -228,7 +228,7 @@ TREE_BUILDERS.snowpine = (rnd) => TREE_BUILDERS.pine(rnd, true);
 
 // Камень: шар, обрубленный случайными плоскостями (сколы), с уступами-пластами и шумом.
 // kind: small — мелкий валун, big — крупный, crag — высокий утёс с резкими гранями
-function rockGeo(rnd, tint, kind = 'small') {
+export function rockGeo(rnd, tint, kind = 'small') {
   let g = new THREE.IcosahedronGeometry(1, kind === 'small' ? 2 : 3);
   g.deleteAttribute('normal'); g.deleteAttribute('uv');
   g = mergeVertices(g);
