@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { Batcher, boxUV, cylUV, gableRoof, gableWall, M4 } from './builders.js';
 import { styleMats, flameMat, windowMat } from './city.js';
 import { mulberry32 } from '../core/util.js';
-import { buildSpiderLair } from './spiderweb.js';
+import { buildSpiderLair, silkEgg } from './spiderweb.js';
 
 const mats = {};
 function mat(key, opts) { if (!mats[key]) mats[key] = new THREE.MeshStandardMaterial(opts); return mats[key]; }
@@ -176,7 +176,7 @@ export function buildPOI(p, terrain, collision, root, animated) {
       for (let i = 0; i < 14; i++) {
         const a = rnd() * 6.28, r = rnd() * 8;
         const ex = x + Math.cos(a) * r, ez = z + Math.sin(a) * r;
-        B.add(new THREE.SphereGeometry(0.5 + rnd() * 0.3, 10, 8), mat('egg', { color: '#d8e0b0', roughness: 0.4, emissive: '#405010', emissiveIntensity: 0.3 }), M4(ex, terrain.getHeight(ex, ez) + 0.4, ez, 0, 1, 1.3, 1));
+        silkEgg(B, ex, terrain.getHeight(ex, ez) + 0.4, ez, 0.45 + rnd() * 0.25, mat('egg', { color: '#c8cc9a', roughness: 0.55, emissive: '#2a3008', emissiveIntensity: 0.25 }));
       }
       for (let i = 0; i < 10; i++) { const a = rnd() * 6.28, rx = x + Math.cos(a) * 30, rz = z + Math.sin(a) * 30; rock(B, rx, terrain.getHeight(rx, rz), rz, 2 + rnd() * 2, rnd, darkRockM()); }
       break;

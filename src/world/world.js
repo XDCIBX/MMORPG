@@ -7,6 +7,7 @@ import { Collision } from './collision.js';
 import { buildCity, windowMat, flameMat } from './city.js';
 import { fountainUniforms } from './fountain.js';
 import { buildPOI, buildShop, platformHeight } from './pois.js';
+import { webTime } from './spiderweb.js';
 import { CITIES, SECRET_SHOPS, POIS, BIOMES } from '../data/world.js';
 import { FX } from '../fx/particles.js';
 import { clamp, lerp, smoothstep } from '../core/util.js';
@@ -218,6 +219,7 @@ export class World {
 
   update(dt, playerPos, camPos) {
     this.time += dt;
+    webTime.value = this.time;
     this.updateSky(playerPos, dt);
     this.terrain.update(dt, this.time);
     this.veg.update(dt, camPos, playerPos);

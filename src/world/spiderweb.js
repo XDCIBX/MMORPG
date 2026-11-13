@@ -153,21 +153,42 @@ function tangleWebTex() {
 }
 
 const mats = {};
+// Шёлк: почти прозрачный, вспыхивает бликом там, где ловит свет, с радужным отливом;
+// сеть колышется от ветра (у рамки неподвижна, в середине — сильнее всего)
+export const webTime = { value: 0 };
 function webMat(kind) {
   if (mats[kind]) return mats[kind];
   const tex = kind === 'orb' ? orbWebAtlas().tex : tangleWebTex();
-  mats[kind] = new THREE.MeshStandardMaterial({
-    map: tex, color: '#eef0e8', emissive: '#8a9088', emissiveMap: tex, emissiveIntensity: kind === 'orb' ? 0.4 : 0.2, opacity: kind === 'orb' ? 0.9 : 0.6,
-    roughness: 0.45, metalness: 0, transparent: true, alphaTest: 0.02, depthWrite: false, side: THREE.DoubleSide,
+  const m = new THREE.MeshPhysicalMaterial({
+    map: tex, color: '#e4e8e0', roughness: 0.22, metalness: 0, transparent: true, opacity: kind === 'orb' ? 0.85 : 0.5,
+    alphaTest: 0.015, depthWrite: false, side: THREE.DoubleSide,
+    iridescence: 0.9, iridescenceIOR: 1.45, iridescenceThicknessRange: [180, 520],
+    specularIntensity: 1, emissive: '#6a7068', emissiveMap: tex, emissiveIntensity: kind === 'orb' ? 0.32 : 0.14,
   });
-  return mats[kind];
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = webTime;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uTime;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        ${kind === 'orb'
+          ? 'vec2 lc = fract(uv * 2.0); float wgt = sin(3.14159 * lc.x) * sin(3.14159 * lc.y);'
+          : 'vec2 lc = uv - 0.5; float wgt = clamp(1.0 - length(lc) * 2.0, 0.0, 1.0);'}
+        float ph = position.x * 0.9 + position.z * 0.7;
+        transformed += normal * (sin(uTime * 1.6 + ph) * 0.05 + sin(uTime * 3.7 + ph * 2.3) * 0.015) * wgt;`);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+        // блик по нитям: ярче там, где взгляд скользит вдоль шёлка
+        diffuseColor.a *= 0.7 + 0.3 * pow(1.0 - abs(dot(normalize(vNormal), normalize(vViewPosition))), 0.6);`);
+  };
+  m.customProgramCacheKey = () => 'web' + kind;
+  mats[kind] = m;
+  return m;
 }
 const snagMat = () => mats.snag || (mats.snag = new THREE.MeshStandardMaterial({ color: '#3a332c', roughness: 0.95 }));
 const cocoonMat = () => mats.cocoon || (mats.cocoon = new THREE.MeshStandardMaterial({ color: '#d6d4c4', roughness: 0.85, emissive: '#2a2a20', emissiveIntensity: 0.3 }));
 
 // плоскость с UV, указывающими на клетку атласа
 function cellPlane(cell) {
-  const g = new THREE.PlaneGeometry(1, 1);
+  const g = new THREE.PlaneGeometry(1, 1, 8, 8);
   const uv = g.attributes.uv;
   const cu = (cell % 2) * 0.5, cv = (1 - Math.floor(cell / 2)) * 0.5;   // flipY: верхний ряд канвы — верх текстуры
   for (let i = 0; i < uv.count; i++) uv.setXY(i, cu + uv.getX(i) * 0.5, cv + uv.getY(i) * 0.5);
@@ -262,6 +283,14 @@ function nearestOnTrunk(trunk, base, p) {
 }
 
 // ---------- Логово ----------
+// Яйцо в шёлковом коконе: само яйцо + оболочка из войлочной паутины
+export function silkEgg(B, ex, ey, ez, r, eggMat) {
+  B.add(new THREE.SphereGeometry(r, 12, 10), eggMat, M4(ex, ey, ez, 0, 1, 1.3, 1));
+  const g = new THREE.SphereGeometry(r * 1.12, 14, 10);
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, 0.5 + (uv.getX(i) - 0.5) * 0.9, 0.5 + (uv.getY(i) - 0.5) * 0.9);
+  B.add(g, webMat('tangle'), M4(ex, ey + r * 0.05, ez, Math.random() * 6, 1.05, 1.35, 1.05), { noShadow: true });
+}
 export function buildSpiderLair(B, extra, x, y, z, rnd, terrain, collision) {
   const gy = (px, pz) => terrain.getHeight(px, pz);
   const lines = [];   // пары точек отдельных нитей
@@ -352,7 +381,7 @@ export function buildSpiderLair(B, extra, x, y, z, rnd, terrain, collision) {
   }
   // все отдельные нити — одним вызовом отрисовки
   const lg = new THREE.BufferGeometry().setFromPoints(lines);
-  const ls = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: '#e8eae0', transparent: true, opacity: 0.4, depthWrite: false }));
+  const ls = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: '#c8ccc4', transparent: true, opacity: 0.26, depthWrite: false }));
   ls.name = 'webstrands';
   extra.push(ls);
 }
