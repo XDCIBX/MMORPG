@@ -31,7 +31,7 @@ export function hitFx(game, name, pos, opts = {}) {
       break;
     }
     case 'slash':
-      FX.burst(p.x, p.y, p.z, 14, { color: ['#ffffff', '#c0d0ff'], speed: 5, life: 0.3, size: 0.3 });
+      E.spark(p, '#e8f0ff', { n: 8, speed: 6, flare: 1.6, ringR: 0.9, light: false });
       break;
     case 'shieldflash': {
       FX.burst(p.x, p.y, p.z, 40, { color: ['#a0c8ff', '#ffffff'], speed: 8, life: 0.35, size: 0.35 });
@@ -63,7 +63,8 @@ export function hitFx(game, name, pos, opts = {}) {
       for (let i = 0; i < 3; i++) game.schedule(i * 0.08, () => FX.burst(p.x, p.y, p.z, 20, { color: ['#c01020', '#600810'], speed: 5, life: 0.8, size: 0.25, gravity: 12 }));
       break;
     case 'arrowhit':
-      FX.burst(p.x, p.y, p.z, 10, { color: ['#ffffff', '#e0d0a0'], speed: 4, life: 0.25, size: 0.2 });
+      E.spark(p, '#fff0c0', { n: 6, speed: 5, flare: 1.4, ringR: 0.8, light: false });
+      FX.burst(p.x, p.y, p.z, 3, { color: ['#a08050', '#d0b080'], speed: 3, life: 0.5, size: 0.2, gravity: 11, up: 1.5, additive: false, tex: 'shard' });
       break;
     case 'poison':
       FX.burst(p.x, p.y, p.z, 30, { color: ['#70ff40', '#305010'], speed: 3, life: 0.9, size: 0.5 });
@@ -94,7 +95,7 @@ export function hitFx(game, name, pos, opts = {}) {
     case 'shadowhit': {
       const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 3), fireMat('#4a10a0', '#c080ff', { disp: 0.6 }));
       ball.position.copy(p);
-      E.add(ball, 0.6, (dt, k) => { ball.scale.setScalar(0.4 + Math.sqrt(k) * 2.2); ball.material.uniforms.uAlpha.value = 1 - k; });
+      E.add(ball, 0.45, (dt, k) => { ball.scale.setScalar(0.3 + Math.sqrt(k) * 1.2); ball.material.uniforms.uAlpha.value = (1 - k) * 0.8; });
       FX.burst(p.x, p.y, p.z, 30, { color: ['#a050ff', '#300850'], speed: 5, life: 0.7, size: 0.5 });
       FX.burst(p.x, p.y, p.z, 14, { color: '#100018', speed: 2, life: 1.4, size: 1.4, additive: false, alpha: 0.55, grow: 1 });
       E.flash(p, '#8030ff', 30, 0.35);
@@ -110,10 +111,10 @@ export function hitFx(game, name, pos, opts = {}) {
       E.flash(p, '#50ff80', 20, 0.3);
       break;
     case 'bonehit':
-      FX.burst(p.x, p.y, p.z, 16, { color: ['#e0e0c0', '#80ff90'], speed: 5, life: 0.4, size: 0.3 });
+      E.spark(p, '#90ffb0', { n: 6, tex: 'bone', speed: 5, flare: 1.4, ringR: 0.8, light: false, gravity: 9 });
       break;
     default:
-      FX.burst(p.x, p.y, p.z, 16, { color: opts.color || '#ffffff', speed: 4, life: 0.4, size: 0.35 });
+      E.spark(p, opts.color || '#ffffff', { n: 8, tex: 'sparkle', speed: 4, flare: 1.6, ringR: 1, light: false, gravity: 2 });
   }
 }
 

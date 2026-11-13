@@ -87,8 +87,8 @@ function vortexMat(c1, c2, arms) {
         float band = smoothstep(0.1, 0.9, sin(sw + n * 3.0) * 0.5 + 0.5);
         float edge = smoothstep(1.0, 0.72, r);
         float hole = smoothstep(0.06, 0.3, r);
-        vec3 col = mix(uC2, uC1, band) * (0.5 + band * 1.3) + vec3(1.0) * pow(band, 6.0) * 0.4 * (1.0 - r);
-        float al = edge * (0.25 + band * 0.75) * mix(1.0, hole, 0.9) * uA;
+        vec3 col = mix(uC2, uC1, band) * (0.35 + band * 0.7) + vec3(1.0) * pow(band, 8.0) * 0.2 * (1.0 - r);
+        float al = edge * (0.2 + band * 0.6) * mix(1.0, hole, 0.9) * uA;
         gl_FragColor = vec4(col, al);
       }`,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
@@ -223,17 +223,18 @@ Object.assign(Effects.prototype, {
     const dur = opts.dur || 0.32, width = opts.width || 0.13, jag = opts.jag || 0.5;
     const g = new THREE.Group();
     const mk = (w, col, op) => { const geo = new THREE.BufferGeometry(); const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })); m.userData.w = w; m.frustumCulled = false; g.add(m); return m; };
-    const strips = [mk(width * 3.2, color, 0.35), mk(width, '#ffffff', 1)];
+    const strips = [mk(width * 2.4, color, 0.3), mk(width * 0.8, '#ffffff', 1)];
     const branches = [];
     for (let b = 0; b < (opts.branches == null ? 3 : opts.branches); b++) branches.push([mk(width * 1.6, color, 0.3), mk(width * 0.5, '#ffffff', 0.9), 0.2 + R() * 0.6]);
     const cam = this.camera;
-    const path = (a, b, j, n) => { const pts = [a.clone()]; const d = b.clone().sub(a); const len = d.length(); const s1 = V(d.z, 0, -d.x).normalize(); if (s1.lengthSq() < 0.01) s1.set(1, 0, 0); const s2 = d.clone().cross(s1).normalize(); for (let i = 1; i < n; i++) { const t = i / n; pts.push(a.clone().lerp(b, t).addScaledVector(s1, (R() - 0.5) * j * Math.min(1, len * 0.2) * Math.sin(t * Math.PI + 0.3)).addScaledVector(s2, (R() - 0.5) * j * Math.min(1, len * 0.2))); } pts.push(b.clone()); return pts; };
+    const path = (a, b, j, n) => { const pts = [a.clone()]; const d = b.clone().sub(a); const len = d.length(); const s1 = V(d.z, 0, -d.x).normalize(); if (s1.lengthSq() < 0.01) s1.set(1, 0, 0); const s2 = d.clone().cross(s1).normalize(); for (let i = 1; i < n; i++) { const t = i / n; pts.push(a.clone().lerp(b, t).addScaledVector(s1, (R() - 0.5) * j * Math.min(1, len * 0.12) * Math.sin(t * Math.PI + 0.3)).addScaledVector(s2, (R() - 0.5) * j * Math.min(1, len * 0.12))); } pts.push(b.clone()); return pts; };
     const fill = (m, pts) => { const pos = [], idx = []; const view = V(0, 0, 1), t = V(0, 0, 0), side = V(0, 0, 0); for (let i = 0; i < pts.length; i++) { t.copy(pts[Math.min(pts.length - 1, i + 1)]).sub(pts[Math.max(0, i - 1)]).normalize(); if (cam) view.copy(cam.position).sub(pts[i]).normalize(); side.crossVectors(t, view).normalize().multiplyScalar(m.userData.w * (i === pts.length - 1 ? 0.3 : 1)); pos.push(pts[i].x - side.x, pts[i].y - side.y, pts[i].z - side.z, pts[i].x + side.x, pts[i].y + side.y, pts[i].z + side.z); if (i < pts.length - 1) { const q = i * 2; idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); } } m.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); m.geometry.setIndex(idx); };
     let acc = 1;
     const regen = () => {
-      const main = path(from, to, jag * 2.2, 12);
+      const segs = Math.max(8, Math.min(30, Math.round(from.distanceTo(to) * 1.7)));
+      const main = path(from, to, jag * 1.8, segs);
       for (const s of strips) fill(s, main);
-      for (const [b1, b2, t] of branches) { const st = main[Math.max(1, Math.floor(t * 11))]; const end = st.clone().add(V((R() - 0.5) * 3, (R() - 0.3) * 2, (R() - 0.5) * 3)); const bp = path(st, end, jag, 5); fill(b1, bp); fill(b2, bp); }
+      for (const [b1, b2, t] of branches) { const st = main[Math.max(1, Math.floor(t * (segs - 1)))]; const end = st.clone().add(V((R() - 0.5) * 3, (R() - 0.3) * 2, (R() - 0.5) * 3)); const bp = path(st, end, jag, 5); fill(b1, bp); fill(b2, bp); }
     };
     this.add(g, dur, (dt, k) => {
       acc += dt; if (acc > 0.045) { acc = 0; regen(); }
@@ -241,9 +242,10 @@ Object.assign(Effects.prototype, {
       strips[0].material.opacity = 0.4 * f; strips[1].material.opacity = f;
       for (const [b1, b2] of branches) { b1.material.opacity = 0.3 * f; b2.material.opacity = 0.8 * f; }
     });
-    FX.emit({ x: to.x, y: to.y, z: to.z, life: 0.25, size: 3, color: '#ffffff', tex: 'flare', spin: 3 });
-    FX.burst(to.x, to.y, to.z, opts.sparks == null ? 10 : opts.sparks, { color: [color, '#ffffff'], speed: 6, life: 0.35, size: 0.3, gravity: 8, tex: 'spark' });
-    this.flash(to, color, 18, 0.2, 10);
+    const small = width < 0.08;       // мелкие разряды — без вспышки на конце
+    if (!small) FX.emit({ x: to.x, y: to.y, z: to.z, life: 0.22, size: 2.4, color: '#ffffff', tex: 'flare', spin: 3, alpha: 0.8 });
+    FX.burst(to.x, to.y, to.z, opts.sparks == null ? (small ? 2 : 10) : opts.sparks, { color: [color, '#ffffff'], speed: 6, life: 0.35, size: 0.3, gravity: 8, tex: 'spark' });
+    if (!small) this.flash(to, color, 18, 0.2, 10);
   },
 
   // Луч: плотное ядро, вихрящаяся оболочка, вспышки на концах
@@ -270,9 +272,9 @@ Object.assign(Effects.prototype, {
   fireColumn(pos, r = 1.2, h = 5, dur = 1.2, colors = ['#ff5a10', '#ffb030', '#ffe890'], smoke = true) {
     this.add(null, dur, (dt, k) => {
       const pw = k < 0.15 ? k / 0.15 : 1 - Math.pow(Math.max(0, k - 0.6) / 0.4, 2);
-      for (let i = 0; i < 6 * pw; i++) {
+      for (let i = 0; i < 5 * pw; i++) {
         const a = R() * 6.28, d = Math.sqrt(R()) * r;
-        FX.emit({ x: pos.x + Math.cos(a) * d, y: pos.y + R() * 0.5, z: pos.z + Math.sin(a) * d, vx: -Math.cos(a) * d * 0.5, vy: h * (0.9 + R() * 0.8), vz: -Math.sin(a) * d * 0.5, life: 0.5 + R() * 0.3, size: r * (1.0 + R()), color: colors[Math.floor(R() * colors.length)], tex: 'flame', grow: -0.5, drag: 0.97 });
+        FX.emit({ x: pos.x + Math.cos(a) * d, y: pos.y + R() * 0.5, z: pos.z + Math.sin(a) * d, vx: -Math.cos(a) * d * 0.5, vy: h * (0.9 + R() * 0.8), vz: -Math.sin(a) * d * 0.5, life: 0.5 + R() * 0.3, size: Math.min(1.5, r * (0.8 + R() * 0.8)), color: colors[Math.floor(R() * colors.length)], tex: 'flame', grow: -0.5, drag: 0.97, alpha: 0.8 });
       }
       if (R() < 0.8 * pw) FX.emit({ x: pos.x + (R() - 0.5) * r, y: pos.y + 0.3, z: pos.z + (R() - 0.5) * r, vx: (R() - 0.5) * 3, vy: h * 0.9 + R() * 3, vz: (R() - 0.5) * 3, life: 1.0, size: 0.16, color: colors[1], gravity: 2, tex: 'spark' });
       if (smoke && R() < 0.35 * pw) FX.emit({ x: pos.x + (R() - 0.5) * r, y: pos.y + h * 0.5, z: pos.z + (R() - 0.5) * r, vy: 2.5, life: 1.6, size: r * 1.6, color: '#2a2420', additive: false, alpha: 0.4, grow: 1.5, tex: 'smoke' });
@@ -402,6 +404,7 @@ Object.assign(Effects.prototype, {
   // Призрачный двойник: копия модели (со своим скелетом), светится и тает.
   // follow=true — повторяет позу оригинала, иначе застывает в текущей.
   spirit(model, color, dur = 1, opts = {}) {
+    if (this.lowFx && !opts.always) return null;
     let clone;
     try { clone = skeletonClone(model.root); } catch (e) { return null; }
     const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });

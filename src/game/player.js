@@ -528,7 +528,7 @@ export class Player extends Entity {
         if (!tgt.alive) return;
         g.combat.dealDamage(this, tgt, dmg);
         hitFx(g, finisher && anim === 'slam' ? 'impact' : 'slash', tgt.center());
-        if (finisher) { g.effects.crescent(this.pos.clone().setY(this.pos.y + 1.1).add(new THREE.Vector3(Math.sin(this.yaw) * 0.6, 0, Math.cos(this.yaw) * 0.6)), this.yaw, this.trailColor(), 2.2, { dur: 0.28, travel: 1.2, roll: 0.4 }); g.shake(0.25); }
+        if (finisher) { g.effects.slash(this.pos.clone().setY(this.pos.y + 1.2), this.yaw, this.trailColor(), anim === 'slam' ? { r: 2.1, span: 2.3, roll: -Math.PI / 2, width: 0.45, dur: 0.28 } : { r: 2.3, span: 2.7, roll: 0.4, width: 0.4, dur: 0.28, travel: 0.8 }); g.shake(0.25); }
         else g.shake(0.08);
         tgt.aggro && tgt.aggro(this);
         if (this.C.resource === 'Ярость') this.res = Math.min(this.maxRes, this.res + 8);

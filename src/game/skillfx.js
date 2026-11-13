@@ -101,7 +101,7 @@ function wisp(c, from, toFn, color, o = {}) {
     const to = toFn(); if (!to) return true;
     const e = k * k * (3 - 2 * k);
     p.copy(a).lerp(to, e).addScaledVector(mid, Math.sin(e * Math.PI));
-    FX.emit({ x: p.x, y: p.y, z: p.z, life: 0.16, size: o.size || 0.55, color, tex: o.tex || 'glow', rot: 0 });
+    FX.emit({ x: p.x, y: p.y, z: p.z, life: 0.045, size: o.size || 0.55, color, tex: o.tex || 'glow', rot: 0, spin: 0 });
     FX.emit({ x: p.x, y: p.y, z: p.z, life: 0.4, size: (o.size || 0.55) * 0.5, color: o.color2 || color, tex: 'glow', grow: -0.6 });
   }, o.onEnd);
 }
@@ -492,7 +492,7 @@ export const SK = {
     cast(c) {
       const root = c.P.model.root, r = c.skill.radius, dur = 0.35 + (c.skill.waves || 3) * 0.45 + 0.2;
       c.E.weaponGlow(c.P.model, '#ff5060', dur, { tex: 'spark' });
-      c.E.orbit(root, 6, r * 0.62, dur, () => { const g = new THREE.Group(), m = addMat('#ff6a78', 0.9); const b = new THREE.Mesh(bladeGeo(), m); b.rotation.z = Math.PI / 2; b.scale.setScalar(1.5); g.add(b); return g; }, { speed: 11, y: 1.1, bob: 0.35, face: Math.PI / 2, tick: (m) => { const w = m.getWorldPosition(V(0, 0, 0)); if (R() < 0.5) FX.emit({ x: w.x, y: w.y, z: w.z, life: 0.22, size: 0.6, color: '#ff5060', tex: 'glow' }); } });
+      c.E.orbit(root, 6, r * 0.62, dur, () => { const g = new THREE.Group(), m = addMat('#ff6a78', 0.9); const b = new THREE.Mesh(bladeGeo(), m); b.rotation.z = Math.PI / 2; b.scale.setScalar(0.95); g.add(b); return g; }, { speed: 11, y: 1.1, bob: 0.35, face: Math.PI / 2, tick: (m) => { const w = m.getWorldPosition(V(0, 0, 0)); if (R() < 0.5) FX.emit({ x: w.x, y: w.y, z: w.z, life: 0.22, size: 0.6, color: '#ff5060', tex: 'glow' }); } });
       c.E.tornado(c.feet(), '#ff4050', r * 0.5, 3.4, dur, root);
     },
     area(c, p, r, w) {
