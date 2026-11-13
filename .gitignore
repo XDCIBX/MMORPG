@@ -3,3 +3,4 @@ node_modules/
 tools/viewer/viewer.bundle.js
 tools/dbg/
 tools/terrain/view.bundle.js
+tools/creatures/view.bundle.js

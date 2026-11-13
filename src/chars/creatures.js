@@ -10,6 +10,8 @@ import { Creature } from './creature_base.js';
 import { horseFromDef } from './horse.js';
 import { mergeToJoints } from './optimize.js';
 import { Beast } from './beasts.js';
+import { Quad } from './quad.js';
+import { Spider as SpiderModel } from './spider.js';
 
 const cmats = new Map();
 function furMat(color, rough = 0.92) {
@@ -413,11 +415,11 @@ function humanoidMob(def, extra = {}) {
 export function buildCreature(def, opts = {}) {
   let c;
   switch (def.model) {
-    case 'wolf': c = new Beast(def, 'wolf'); break;
-    case 'boar': c = new Beast(def, 'boar'); break;
-    case 'bear': c = new Beast(def, 'bear'); break;
+    case 'wolf': c = new Quad(def, 'wolf'); break;
+    case 'boar': c = new Quad(def, 'boar'); break;
+    case 'bear': c = new Quad(def, 'bear'); break;
     case 'horse': c = horseFromDef(def); break;
-    case 'spider': c = new Spider(def); break;
+    case 'spider': c = new SpiderModel(def); break;
     case 'golem': c = new Golem(def); break;
     case 'wraith': c = new Wraith(def); break;
     case 'elemental': c = new Elemental(def); break;
@@ -438,11 +440,11 @@ export function buildCreature(def, opts = {}) {
 }
 
 export { humanoidMob };
-void clothMat;
+void clothMat; void Beast; void Spider;
 
 // Склеить неподвижные детали модели (гуманоиды и звери), не трогая анимируемые части
 export function optimizeModel(c) {
-  if (!c || !c.root || c.isHero) return c;
+  if (!c || !c.root || c.isHero || c.isQuad) return c;
   const isHum = !!(c.j && c.joint);
   const isBeast = c.kind === 'wolf' || c.kind === 'bear' || c.kind === 'boar';
   if (!isHum && !isBeast) return c;

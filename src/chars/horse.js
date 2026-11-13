@@ -960,14 +960,15 @@ export class Horse extends Creature {
   update(dt, st = {}) {
     this.baseUpdate(dt);
     const speed = st.speed || 0;
-    const v = Math.abs(speed);
+    // для зверей меньше лошади: скорость в «лошадиных» единицах (подобие по размеру)
+    const v = Math.abs(speed) / (this.gaitScale || 1);
     const dir = speed < 0 ? -1 : 1;
     // веса аллюров (плавный переход)
     const target = v < 0.25 ? 0 : v < 3.0 ? 1 : v < 7.2 ? 2 : 3;
     for (let i = 0; i < 4; i++) this.gaitW[i] += ((i === target ? 1 : 0) - this.gaitW[i]) * Math.min(1, dt * 5);
     const gw = this.gaitW;
     const freq = gw[1] * (0.55 + v * 0.22) + gw[2] * (1.0 + v * 0.1) + gw[3] * (1.55 + v * 0.045) + gw[0] * 0.6;
-    this.phase = (this.phase + dt * freq * dir + 10) % 1;
+    this.phase = (this.phase + dt * freq * (this.freqMul || 1) * dir + 10) % 1;
     const ph = this.phase;
     const moving = 1 - gw[0];
     const air = st.airborne ? 1 : 0;
