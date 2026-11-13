@@ -86,6 +86,20 @@ function sculpt(type) {
       extra.tusks.push([sx * 0.025, -0.055, 0.105, -0.025]);
     });
     E([0, -0.062, 0.108], [0.044, 0.005, 0.02], { sub: true, k: 0.006 });
+  } else if (type === 'skull') {
+    // череп: свод, глазницы, носовая полость, скулы, верхняя челюсть с зубами, нижняя челюсть
+    C([0, -0.07, -0.025], [0, -0.2, -0.035], 0.03, 0.035, { k: 0.01, tag: 'neck' });
+    E([0, 0.03, -0.015], [0.088, 0.095, 0.105], { k: 0.02 });
+    E([0, -0.03, 0.055], [0.066, 0.06, 0.055], { k: 0.025 });
+    both(sx => {
+      E([sx * 0.06, -0.022, 0.06], [0.026, 0.02, 0.03], { k: 0.015 });                         // скуловые кости
+      E([sx * 0.032, 0.006, 0.088], [0.024, 0.021, 0.03], { sub: true, k: 0.008 });           // глазницы
+      extra.eyes.push([sx * 0.032, 0.004, 0.078, 0.008]);
+    });
+    C([0, -0.012, 0.11], [0, -0.04, 0.11], 0.012, 0.016, { sub: true, k: 0.006 });             // носовая полость
+    E([0, -0.07, 0.08], [0.045, 0.018, 0.035], { k: 0.012, tag: 'teeth' });                   // зубы
+    E([0, -0.092, 0.062], [0.052, 0.018, 0.048], { k: 0.012, tag: 'jaw' });
+    E([0, -0.065, 0.11], [0.04, 0.004, 0.012], { sub: true, k: 0.004 });
   } else if (type === 'yeti') {
     E([0, 0.04, -0.025], [0.102, 0.11, 0.108], { k: 0.035 });
     C([0, 0.14, -0.06], [0, 0.12, 0.03], 0.016, 0.012, { k: 0.03 });                          // сагиттальный гребень
@@ -138,7 +152,7 @@ function headGeo(type) {
   return out;
 }
 
-export const MOB_HEADS = new Set(['orc', 'goblin', 'lizard', 'bull', 'demon', 'yeti']);
+export const MOB_HEADS = new Set(['orc', 'goblin', 'lizard', 'bull', 'demon', 'yeti', 'skull']);
 
 // Посадить голову на детальное тело (HeroModel): человеческую голову, глаза и волосы скрыть
 export function attachMobHead(h, spec, scaleMat) {
@@ -150,7 +164,7 @@ export function attachMobHead(h, spec, scaleMat) {
   group.position.copy(h.headC.position);
   group.scale.setScalar(k);
   h.j.head.add(group);
-  const mat = type === 'lizard' && scaleMat ? scaleMat : heroMat('skin', type === 'yeti' ? '#5c6068' : skin);
+  const mat = type === 'lizard' && scaleMat ? scaleMat : type === 'skull' ? heroMat('bone', '#d6cdb2') : heroMat('skin', type === 'yeti' ? '#5c6068' : skin);
   const head = new THREE.Mesh(g, mat);
   head.castShadow = true;
   group.add(head);
@@ -161,7 +175,7 @@ export function attachMobHead(h, spec, scaleMat) {
   }
   // глаза
   const eyeC = spec.eyes && spec.eyes.color || '#e0c040';
-  const glow = !!(spec.eyes && spec.eyes.glow) || type === 'demon' || type === 'orc' || type === 'troll';
+  const glow = !!(spec.eyes && spec.eyes.glow) || type === 'demon' || type === 'orc' || type === 'troll' || type === 'skull';
   const eyeM = new THREE.MeshPhysicalMaterial({ color: eyeC, roughness: 0.08, clearcoat: 1, emissive: eyeC, emissiveIntensity: glow ? 1.6 : 0.15 });
   for (const [x, y, z, r] of extra.eyes) { const e = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), eyeM); e.position.set(x, y, z); group.add(e); }
   // клыки и рога

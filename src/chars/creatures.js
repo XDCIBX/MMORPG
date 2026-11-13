@@ -505,7 +505,8 @@ export function prepareMobBodies() { if (!IS_TOUCH && !mobBodyAsked) { mobBodyAs
 function humanoidMob(def, extra = {}) {
   const spec = Object.assign({}, def.spec || {});
   const ht = spec.headType || 'human';
-  const canHero = !IS_TOUCH && ht !== 'skull' && (ht === 'human' || MOB_HEADS.has(ht));
+  // скелет без доспехов остаётся костяным; черепа в латах и балахонах — на детальных телах
+  const canHero = !IS_TOUCH && (ht === 'human' || MOB_HEADS.has(ht)) && !(ht === 'skull' && !(def.armor && !def.armor.partial));
   prepareMobBodies();
   let h;
   if (canHero && heroReady(MOB_BODY)) {
@@ -613,7 +614,7 @@ export function buildCreature(def, opts = {}) {
     case 'dragon': c = new DragonQ(def); break;
     case 'lich': {
       const lichDef = {
-        spec: { headType: 'skull', limb: 0.65, eyes: { color: def.eye || '#60e0ff' }, hair: { style: 'none' }, base: { shirt: null, pants: null, boots: null } },
+        spec: { headType: 'skull', skin: '#b8b4a6', limb: 0.65, eyes: { color: def.eye || '#60e0ff', glow: true }, hair: { style: 'none' }, base: { shirt: null, pants: null, boots: null } },
         armor: { kind: 'cloth', c1: '#1a2a3a', c2: '#80c8ff', tier: 7, style: 2, robe: true, gem: '#60e0ff' },
         weapon: { wtype: 'bonestaff', tier: 7, gem: '#60e0ff' },
       };
