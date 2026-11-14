@@ -5,6 +5,7 @@ import { mulberry32, Noise, smoothstep } from '../core/util.js';
 import { WORLD_HALF, CITIES, SECRET_SHOPS, POIS, BIOMES } from '../data/world.js';
 import { IS_PHONE } from '../core/device.js';
 import { barkTex, leafCard, pineCard, terrainLayers } from '../core/textures.js';
+import { groundTextures } from '../core/groundtex.js';
 
 export const windUniforms = { uTime: { value: 0 } };
 
@@ -272,11 +273,17 @@ export function rockGeo(rnd, tint, kind = 'small') {
 function rockMaterial() {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0 });
   const tex = terrainLayers();
+  const GT = groundTextures();
+  const mR = GT.rock.userData.mean, mG = GT.grass.userData.mean;
   m.onBeforeCompile = (sh) => {
     sh.uniforms.tLayers = { value: tex };
+    sh.uniforms.tRk = { value: GT.rock }; sh.uniforms.tMoss = { value: GT.grass };
+    sh.uniforms.mRk = { value: mR };
+    sh.uniforms.mMs = { value: mG };
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vRW; varying vec3 vRN;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vRW; varying vec3 vRN; varying float vLY;')
       .replace('#include <project_vertex>', `#include <project_vertex>
+        vLY = position.y;
         #ifdef USE_INSTANCING
           vRW = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
           vRN = mat3(modelMatrix) * mat3(instanceMatrix) * objectNormal;
@@ -286,10 +293,14 @@ function rockMaterial() {
         #endif`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-        uniform sampler2D tLayers; varying vec3 vRW; varying vec3 vRN; float gRockH;
+        uniform sampler2D tLayers; uniform sampler2D tRk; uniform sampler2D tMoss; uniform vec3 mRk; uniform vec3 mMs;
+        varying vec3 vRW; varying vec3 vRN; varying float vLY; float gRockH; float gMoss;
+        vec3 gAn;
         float rockTri(float sc) {
-          vec3 an = abs(normalize(vRN)); an = pow(an, vec3(3.0)); an /= (an.x + an.y + an.z);
-          return texture2D(tLayers, vRW.zy * sc).g * an.x + texture2D(tLayers, vRW.xz * sc).g * an.y + texture2D(tLayers, vRW.xy * sc).g * an.z;
+          return texture2D(tLayers, vRW.zy * sc).g * gAn.x + texture2D(tLayers, vRW.xz * sc).g * gAn.y + texture2D(tLayers, vRW.xy * sc).g * gAn.z;
+        }
+        vec4 rockTex(float sc) {
+          return texture2D(tRk, vRW.zy * sc) * gAn.x + texture2D(tRk, vRW.xz * sc) * gAn.y + texture2D(tRk, vRW.xy * sc) * gAn.z;
         }
         vec3 rockPerturb(vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDirection) {
           vec3 sx = dFdx(surf_pos), sy = dFdy(surf_pos);
@@ -302,19 +313,36 @@ function rockMaterial() {
           return l > 1e-6 ? n / l : surf_norm;
         }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
+        vec3 nW = normalize(vRN);
+        gAn = pow(abs(nW), vec3(3.0)); gAn /= (gAn.x + gAn.y + gAn.z);
         float h1 = rockTri(0.33), h2 = rockTri(0.06);
-        gRockH = h1 * 0.7 + h2 * 0.5;
+        // фактура скалы двух масштабов: зерно, поры, прожилки, лишайник
+        vec4 t1 = rockTex(0.42), t2 = rockTex(0.11);
+        vec3 alb = mix(t1.rgb, t2.rgb, 0.4) / mRk;
+        // снежные камни (белые вершинные цвета) — без фактуры скалы и мха, тёмные (вулкан) — без мха
+        float snowy = smoothstep(0.35, 0.55, min(vColor.r, vColor.b));
+        alb = mix(alb, vec3(1.0), snowy * 0.85);
+        gRockH = h1 * 0.45 + h2 * 0.4 + t1.a * 0.55 + t2.a * 0.3;
         float st = sin(vRW.y * 5.5 + (h2 - 0.5) * 6.0);
-        diffuseColor.rgb *= mix(0.55, 1.32, h1) * mix(0.8, 1.16, h2) * (1.0 + st * 0.06);
-        diffuseColor.rgb *= mix(0.6, 1.0, smoothstep(0.12, 0.42, h1 * 0.6 + h2 * 0.55));`)
+        diffuseColor.rgb *= clamp(alb, 0.0, 2.4) * mix(0.75, 1.18, h1) * mix(0.84, 1.12, h2) * (1.0 + st * 0.05);
+        // трещины и впадины темнее (грязь, тень)
+        diffuseColor.rgb *= mix(0.55, 1.0, smoothstep(0.18, 0.5, t1.a * 0.6 + h1 * 0.5));
+        // мох на верхних пологих гранях; у самого низа камня — земля
+        float mossN = h2 * 0.6 + t2.a * 0.5;
+        gMoss = smoothstep(0.55, 0.8, nW.y + (mossN - 0.5) * 0.7) * (1.0 - snowy) * smoothstep(0.02, 0.06, vColor.g);
+        vec3 moss = vec3(0.07, 0.11, 0.03) * clamp(texture2D(tMoss, vRW.xz * 0.6).rgb / mMs, 0.0, 2.2);
+        diffuseColor.rgb = mix(diffuseColor.rgb, moss, gMoss * 0.85);
+        diffuseColor.rgb *= mix(0.62, 1.0, smoothstep(-0.55, 0.1, vLY));`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        roughnessFactor = mix(mix(0.92, 0.7, t1.a), 0.97, gMoss);`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         {
           float fd = 1.0 - smoothstep(60.0, 160.0, length(vViewPosition));
-          vec2 dH = vec2(dFdx(gRockH), dFdy(gRockH)) * 3.2 * fd;
+          vec2 dH = vec2(dFdx(gRockH), dFdy(gRockH)) * 3.4 * fd * (1.0 - gMoss * 0.5);
           if (dot(dH, dH) > 1e-10) normal = rockPerturb(-vViewPosition, normal, dH, faceDirection);
         }`);
   };
-  m.customProgramCacheKey = () => 'rockTri';
+  m.customProgramCacheKey = () => 'rockTri2';
   return m;
 }
 
@@ -565,37 +593,42 @@ export class Vegetation {
     }
   }
 
-  // Пучок травы: тонкие изогнутые травинки из нескольких сегментов
+  // Пучок травы: много тонких изогнутых травинок разной высоты; тёмное основание, светлые выгоревшие кончики
   makeTuft(rnd, blades, segs, hMin, hMax) {
     const pos = [], col = [], nrm = [], tip = [];
     for (let b = 0; b < blades; b++) {
       const a = rnd() * Math.PI * 2;
-      const r = Math.sqrt(rnd()) * 0.32;
+      const r = Math.sqrt(rnd()) * 0.42;
       const bx = Math.cos(a) * r, bz = Math.sin(a) * r;
-      const h = hMin + rnd() * (hMax - hMin);
-      const w = 0.018 + rnd() * 0.022;
-      const bend = 0.15 + rnd() * 0.45; // насколько клонится
-      const dir = a + (rnd() - 0.5) * 1.2; // направление наклона
-      const face = rnd() * Math.PI; // поворот плоскости травинки
+      // в центре пучка травинки выше, по краям — ниже
+      const h = (hMin + rnd() * (hMax - hMin)) * (1.1 - r * 0.9);
+      const w = 0.007 + rnd() * 0.009;
+      const bend = 0.1 + rnd() * 0.5; // насколько клонится
+      const dir = a + (rnd() - 0.5) * 1.4; // направление наклона
+      const face = dir + Math.PI / 2 + (rnd() - 0.5) * 0.8; // плоскость травинки поперёк наклона
       const fx = Math.cos(face), fz = Math.sin(face);
+      // оттенок травинки: сочная / желтоватая / сухая
+      const kind = rnd();
+      const tint = kind < 0.12 ? [1.25, 1.12, 0.62] : kind < 0.35 ? [1.08, 1.06, 0.8] : [0.92 + rnd() * 0.12, 1, 0.9 + rnd() * 0.1];
       const ring = [];
       for (let k = 0; k <= segs; k++) {
         const t = k / segs;
         const off = bend * t * t * h;
         const cx = bx + Math.cos(dir) * off, cz = bz + Math.sin(dir) * off;
         const y = h * t * (1 - bend * 0.35 * t);
-        const ww = w * (1 - t * 0.92);
+        const ww = w * (1 - Math.pow(t, 1.6) * 0.96);
         ring.push([[cx - fx * ww, y, cz - fz * ww], [cx + fx * ww, y, cz + fz * ww], t]);
       }
-      // нормаль — смесь «вверх» и стороны травинки: мягкое освещение
-      const nx = -fz * 0.35, nz = fx * 0.35;
+      // нормаль почти вверх, как у земли — травинки освещены так же, как дёрн под ними
+      const nx = Math.cos(dir) * 0.25, nz = Math.sin(dir) * 0.25;
       for (let k = 0; k < segs; k++) {
         const [l0, r0, t0] = ring[k], [l1, r1, t1] = ring[k + 1];
         const quads = [[l0, t0], [r0, t0], [r1, t1], [l0, t0], [r1, t1], [l1, t1]];
         for (const [p, t] of quads) {
           pos.push(p[0], p[1], p[2]);
-          const sh = Math.pow(0.22 + t * 0.85, 2.2);
-          col.push(sh, sh, sh);
+          const sh = 0.5 + 0.5 * Math.pow(t, 0.7); // мягкая тень у корня
+          const tt = t * t;
+          col.push(sh * (1 + (tint[0] - 1) * tt), sh * (1 + (tint[1] - 1) * tt), sh * (1 + (tint[2] - 1) * tt));
           nrm.push(nx, 1, nz);
           tip.push(t);
         }
@@ -612,8 +645,8 @@ export class Vegetation {
 
   buildGrassAssets() {
     const rnd = mulberry32(7);
-    this.grassGeoNear = this.makeTuft(rnd, IS_PHONE ? 10 : 16, 4, 0.28, 0.75);
-    this.grassGeoFar = this.makeTuft(rnd, IS_PHONE ? 6 : 9, 3, 0.3, 0.7);
+    this.grassGeoNear = this.makeTuft(rnd, IS_PHONE ? 16 : 30, 3, 0.2, 0.62);
+    this.grassGeoFar = this.makeTuft(rnd, IS_PHONE ? 9 : 14, 2, 0.22, 0.6);
     this.grassGeo = this.grassGeoNear;
     this.playerUniform = { value: new THREE.Vector3() };
     this.camUniform = { value: new THREE.Vector3() };
@@ -648,9 +681,11 @@ export class Vegetation {
         ;
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', '#include <common>\nvarying float vTip;')
+        // обе стороны травинки освещаются одинаково (иначе обратная сторона получает нормаль вниз и чернеет)
+        .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\n#ifdef DOUBLE_SIDED\nnormal *= faceDirection;\n#endif')
         .replace('#include <opaque_fragment>', `
           // просвечивание кончиков на солнце
-          outgoingLight += diffuseColor.rgb * vTip * vTip * 0.22;
+          outgoingLight += diffuseColor.rgb * vTip * vTip * 0.3;
           #include <opaque_fragment>`);
     };
     this.grassMat = m;
@@ -704,8 +739,8 @@ export class Vegetation {
       T.colorAt(x, z, tc);
       const gc = bb.grass;
       const v = 0.85 + rnd() * 0.35;
-      c.setRGB(gc[0] * v * 1.1, gc[1] * v * 1.08, gc[2] * v * 0.95).convertSRGBToLinear();
-      c.lerp(tc, 0.35);
+      c.setRGB(gc[0] * v, gc[1] * v, gc[2] * v * 0.92).convertSRGBToLinear();
+      c.lerp(tc, 0.5);
       if (rnd() < 0.08) c.multiplyScalar(1.25).lerp(new THREE.Color(0.55, 0.5, 0.18), 0.3); // сухие пучки
       cols.push(c.clone());
       if (bb.id <= 1 && rnd() < (near ? 0.03 : 0.012)) {

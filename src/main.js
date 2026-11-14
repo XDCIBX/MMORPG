@@ -389,6 +389,7 @@ class App {
       this.adaptResolution(raw);
     }
     this.input.endFrame();
+    if (this.world && (this.mode === 'game' || this.mode === 'menu')) this.world.renderReflection(this.renderer, this.camera);
     if (this.mode !== 'loading') this.composer.render();
   }
 }

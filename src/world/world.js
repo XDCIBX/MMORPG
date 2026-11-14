@@ -106,8 +106,11 @@ export class World {
     const sky = new Sky();
     sky.scale.setScalar(4000);
     const u = sky.material.uniforms;
-    u.turbidity.value = 6;
-    u.rayleigh.value = 1.6;
+    u.turbidity.value = 4.5;
+    u.rayleigh.value = 1.8;
+    // небо не ярче порога свечения (кроме диска солнца): иначе bloom заливает весь кадр белёсой пеленой
+    sky.material.fragmentShader = sky.material.fragmentShader.replace('gl_FragColor = vec4( retColor, 1.0 );',
+      'retColor *= mix(min(1.0, 1.25 / max(max(retColor.r, retColor.g), max(retColor.b, 1e-4))), 1.0, sundisk);\n\t\t\tgl_FragColor = vec4( retColor, 1.0 );');
     u.mieCoefficient.value = 0.004;
     u.mieDirectionalG.value = 0.86;
     this.sky = sky;
@@ -215,6 +218,69 @@ export class World {
     }
     this.scene.environmentIntensity = lerp(0.12, 0.35, day);
     this.isNight = day < 0.3;
+  }
+
+  // Зеркальное отражение для озёр: сцена из камеры, отражённой относительно глади (y = 0),
+  // в маленькую текстуру; трава и сама вода не рисуются. Только если вода рядом.
+  renderReflection(renderer, camera) {
+    const wu = this.terrain.waterUniforms;
+    const q = this.quality;
+    const cp = camera.position;
+    let near = false;
+    if (q >= 0.6 && cp.y > 0.3) {
+      for (const [x, z] of this.terrain.waterSpots) if ((x - cp.x) * (x - cp.x) + (z - cp.z) * (z - cp.z) < 260 * 260) { near = true; break; }
+    }
+    if (!near) { wu.uReflOn.value = 0; return; }
+    this.reflFrame = (this.reflFrame || 0) + 1;
+    if (q < 1 && this.reflFrame % 2 && wu.uReflOn.value > 0) return; // на среднем качестве — через кадр
+    let R = this.refl;
+    const w = q >= 1.2 ? 768 : q >= 1 ? 512 : 384;
+    if (!R || R.w !== w) {
+      if (R) R.rt.dispose();
+      R = this.refl = {
+        w, rt: new THREE.WebGLRenderTarget(w, w >> 1, { type: THREE.HalfFloatType }),
+        cam: new THREE.PerspectiveCamera(), rot: new THREE.Matrix4(), plane: new THREE.Plane(), clip: new THREE.Vector4(), qv: new THREE.Vector4(),
+        v: new THREE.Vector3(), t: new THREE.Vector3(), la: new THREE.Vector3(), n: new THREE.Vector3(0, 1, 0), o: new THREE.Vector3(),
+      };
+      wu.tReflect.value = R.rt.texture;
+    }
+    camera.updateMatrixWorld();
+    const vc = R.cam, n = R.n, o = R.o;
+    R.rot.extractRotation(camera.matrixWorld);
+    R.v.subVectors(o, cp).reflect(n).negate().add(o);
+    R.la.set(0, 0, -1).applyMatrix4(R.rot).add(cp);
+    R.t.subVectors(o, R.la).reflect(n).negate().add(o);
+    vc.position.copy(R.v);
+    vc.up.set(0, 1, 0).applyMatrix4(R.rot).reflect(n);
+    vc.lookAt(R.t);
+    vc.far = camera.far; vc.near = camera.near;
+    vc.updateMatrixWorld();
+    vc.projectionMatrix.copy(camera.projectionMatrix);
+    wu.uReflMat.value.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1)
+      .multiply(vc.projectionMatrix).multiply(vc.matrixWorldInverse);
+    // косая плоскость отсечения: всё, что под водой, в отражение не попадает
+    R.plane.setFromNormalAndCoplanarPoint(n, o).applyMatrix4(vc.matrixWorldInverse);
+    R.clip.set(R.plane.normal.x, R.plane.normal.y, R.plane.normal.z, R.plane.constant);
+    const e = vc.projectionMatrix.elements;
+    R.qv.set((Math.sign(R.clip.x) + e[8]) / e[0], (Math.sign(R.clip.y) + e[9]) / e[5], -1, (1 + e[10]) / e[14]);
+    R.clip.multiplyScalar(2 / R.clip.dot(R.qv));
+    e[2] = R.clip.x; e[6] = R.clip.y; e[10] = R.clip.z + 1 - 0.003; e[14] = R.clip.w;
+    // рисуем без воды, травы и обновления теней
+    const water = this.terrain.water, hidden = [];
+    if (water) { water.visible = false; }
+    for (const g of this.veg.grassChunks.values()) if (g.visible) { g.visible = false; hidden.push(g); }
+    // дальние рощи в отражении не видны за дымкой — экономим вызовы отрисовки
+    for (const ch of this.veg.chunks) if (ch.visible && Math.hypot(ch.userData.cx - cp.x, ch.userData.cz - cp.z) > 380) { ch.visible = false; hidden.push(ch); }
+    const prevRT = renderer.getRenderTarget(), prevAuto = renderer.shadowMap.autoUpdate;
+    renderer.shadowMap.autoUpdate = false;
+    renderer.setRenderTarget(R.rt);
+    renderer.clear();
+    renderer.render(this.scene, vc);
+    renderer.setRenderTarget(prevRT);
+    renderer.shadowMap.autoUpdate = prevAuto;
+    if (water) water.visible = true;
+    for (const g of hidden) g.visible = true;
+    wu.uReflOn.value = 1;
   }
 
   update(dt, playerPos, camPos) {

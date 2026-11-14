@@ -24,6 +24,7 @@ window.__genMs = performance.now() - t0;
 window.__timing = Object.assign({ baked: T.baked }, T.genTiming);
 scene.add(T.mesh);
 if (T.water) scene.add(T.water);
+if (T.lava) scene.add(T.lava);
 const cam = new THREE.PerspectiveCamera(Number(q.get('fov') || 55), W / H, 0.5, 3000);
 const views = JSON.parse(q.get('views') || '[[300,150,30,560,-100,10]]');
 window.__render = (i) => {

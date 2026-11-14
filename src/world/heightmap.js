@@ -242,7 +242,10 @@ export function generateHeights(N, WORLD_HALF, opts = {}) {
     const idx = j * V + i;
     let h = raw[idx];
     for (const L of LAKES.concat(LAVA_POOLS)) {
-      const d = Math.hypot(x - L.x, z - L.z);
+      // неровный берег: заливы и мысы (радиус зависит от направления), мелкая изрезанность
+      const a = Math.atan2(z - L.z, x - L.x);
+      const wob = n2.fbm(Math.cos(a) * 0.8 + L.x * 0.013, Math.sin(a) * 0.8 + L.z * 0.013, 2) * 0.34 + n3.fbm(x * 0.03, z * 0.03, 2) * 0.1;
+      const d = Math.hypot(x - L.x, z - L.z) / (1 + wob);
       const t = smoothstep(L.r * 1.35, L.r * 0.35, d);
       if (t > 0) h = lerp(h, -L.depth, t);
     }

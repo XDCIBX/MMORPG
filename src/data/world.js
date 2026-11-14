@@ -30,8 +30,8 @@ export const ROADS = [
 
 // Биомы: центр, радиус, параметры
 export const BIOMES = {
-  meadow: { id: 0, name: 'Изумрудные холмы', grass: [0.32, 0.52, 0.18], grass2: [0.42, 0.6, 0.22], dirt: [0.45, 0.36, 0.24], rock: [0.48, 0.46, 0.42], amp: 7, grassDensity: 1, trees: { oak: 0.5, pine: 0.15, birch: 0.35 }, treeDensity: 0.35 },
-  forest: { id: 1, name: 'Шепчущий лес', grass: [0.2, 0.4, 0.12], grass2: [0.26, 0.45, 0.14], dirt: [0.36, 0.28, 0.18], rock: [0.42, 0.42, 0.38], amp: 10, grassDensity: 0.8, trees: { pine: 0.55, oak: 0.35, birch: 0.1 }, treeDensity: 1.0 },
+  meadow: { id: 0, name: 'Изумрудные холмы', grass: [0.33, 0.45, 0.19], grass2: [0.43, 0.5, 0.23], dirt: [0.45, 0.36, 0.24], rock: [0.48, 0.46, 0.42], amp: 7, grassDensity: 1, trees: { oak: 0.5, pine: 0.15, birch: 0.35 }, treeDensity: 0.35 },
+  forest: { id: 1, name: 'Шепчущий лес', grass: [0.23, 0.34, 0.14], grass2: [0.29, 0.38, 0.16], dirt: [0.36, 0.28, 0.18], rock: [0.42, 0.42, 0.38], amp: 10, grassDensity: 0.8, trees: { pine: 0.55, oak: 0.35, birch: 0.1 }, treeDensity: 1.0 },
   highland: { id: 2, name: 'Сизые нагорья', grass: [0.42, 0.48, 0.26], grass2: [0.5, 0.5, 0.3], dirt: [0.48, 0.42, 0.32], rock: [0.42, 0.41, 0.4], amp: 28, grassDensity: 0.55, trees: { pine: 0.8, dead: 0.2 }, treeDensity: 0.25 },
   swamp: { id: 3, name: 'Гнилые топи', grass: [0.28, 0.33, 0.14], grass2: [0.34, 0.36, 0.16], dirt: [0.26, 0.24, 0.16], rock: [0.32, 0.33, 0.28], amp: 2, grassDensity: 0.9, trees: { willow: 0.7, dead: 0.3 }, treeDensity: 0.55 },
   cursed: { id: 4, name: 'Проклятая чаща', grass: [0.24, 0.26, 0.2], grass2: [0.3, 0.28, 0.24], dirt: [0.28, 0.24, 0.22], rock: [0.36, 0.34, 0.36], amp: 12, grassDensity: 0.5, trees: { dead: 0.6, pine: 0.4 }, treeDensity: 0.7 },

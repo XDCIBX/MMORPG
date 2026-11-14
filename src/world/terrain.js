@@ -6,6 +6,7 @@ import { WORLD_HALF, CITIES, ROADS, BIOMES, BIOME_LIST, BIOME_SEEDS, LAKES, LAVA
 
 import { IS_PHONE } from '../core/device.js';
 import { generateHeights, decodeBakedHeights } from './heightmap.js';
+import { groundTextures } from '../core/groundtex.js';
 
 const N = IS_PHONE ? 320 : 480; // сегментов по стороне (на телефонах меньше)
 const SIZE = WORLD_HALF * 2;
@@ -98,6 +99,9 @@ export class Terrain {
     const col = new Float32Array(V * V * 3);
     const splat = new Float32Array(V * V * 3);
     const rockA = new Float32Array(V * V * 4);
+    // цвета слоёв для текстур: дёрн, почва, песок; доли биомов (вулкан, болото, снег); берег, дорога, пятна почвы
+    const aG = new Float32Array(V * V * 3), aD = new Float32Array(V * V * 3), aSn = new Float32Array(V * V * 3);
+    const aBio = new Float32Array(V * V * 3), aSp2 = new Float32Array(V * V * 3);
     for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) {
       const idx = j * V + i;
       pos[idx * 3] = -WORLD_HALF + i * CELL;
@@ -123,16 +127,17 @@ export class Terrain {
       const x = pos[idx * 3], h = pos[idx * 3 + 1], z = pos[idx * 3 + 2];
       const ny = nrm[idx * 3 + 1];
       let r = 0, gg = 0, b = 0, kr = 0, kg = 0, kb = 0;
+      let g0 = 0, g1 = 0, g2 = 0, d0 = 0, d1 = 0, d2c = 0;
       const patch = n.fbm(x * 0.02, z * 0.02, 3) * 0.5 + 0.5;
       const dirtPatch = smoothstep(0.62, 0.8, n.fbm(x * 0.015 + 9, z * 0.015, 3) * 0.5 + 0.5);
       for (let bi = 0; bi < nb; bi++) {
         const w = this.biomeW[idx * nb + bi];
         if (w < 0.001) continue;
         const B = BIOME_LIST[bi];
-        for (let c = 0; c < 3; c++) {
-          tmp[c] = lerp(B.grass[c], B.grass2[c], patch);
-          tmp[c] = lerp(tmp[c], B.dirt[c], dirtPatch * 0.6);
-        }
+        for (let c = 0; c < 3; c++) tmp[c] = lerp(B.grass[c], B.grass2[c], patch);
+        g0 += tmp[0] * w; g1 += tmp[1] * w; g2 += tmp[2] * w;
+        d0 += B.dirt[0] * w; d1 += B.dirt[1] * w; d2c += B.dirt[2] * w;
+        for (let c = 0; c < 3; c++) tmp[c] = lerp(tmp[c], B.dirt[c], dirtPatch * 0.6);
         // скалы на крутых склонах; чем выше, тем на более пологих выходит камень (выше границы леса)
         const alt = smoothstep(30, 65, h);
         const rockT = smoothstep(0.78 + alt * 0.1, 0.6 + alt * 0.1, ny);
@@ -154,7 +159,7 @@ export class Terrain {
       const swampW = this.biomeW[idx * nb + BIOMES.swamp.id];
       const volcW = this.biomeW[idx * nb + BIOMES.volcanic.id];
       const shore = smoothstep(1.6, 0.2, h);
-      const sand = swampW > 0.4 ? [0.22, 0.2, 0.12] : volcW > 0.4 ? [0.35, 0.12, 0.05] : [0.72, 0.65, 0.46];
+      const sand = swampW > 0.4 ? [0.22, 0.2, 0.12] : volcW > 0.4 ? [0.11, 0.09, 0.08] : [0.72, 0.65, 0.46];
       r = lerp(r, sand[0], shore); gg = lerp(gg, sand[1], shore); b = lerp(b, sand[2], shore);
       // дороги
       const rd = this.road[idx];
@@ -172,25 +177,51 @@ export class Terrain {
       }
       // цвета заданы в sRGB — переводим в линейное пространство
       col[idx * 3] = Math.pow(r, 2.2); col[idx * 3 + 1] = Math.pow(gg, 2.2); col[idx * 3 + 2] = Math.pow(b, 2.2);
+      aG[idx * 3] = Math.pow(g0, 2.2); aG[idx * 3 + 1] = Math.pow(g1, 2.2); aG[idx * 3 + 2] = Math.pow(g2, 2.2);
+      aD[idx * 3] = Math.pow(d0, 2.2); aD[idx * 3 + 1] = Math.pow(d1, 2.2); aD[idx * 3 + 2] = Math.pow(d2c, 2.2);
+      aSn[idx * 3] = Math.pow(sand[0], 2.2); aSn[idx * 3 + 1] = Math.pow(sand[1], 2.2); aSn[idx * 3 + 2] = Math.pow(sand[2], 2.2);
+      aBio[idx * 3] = volcW; aBio[idx * 3 + 1] = swampW; aBio[idx * 3 + 2] = snowBW;
+      aSp2[idx * 3] = shore; aSp2[idx * 3 + 1] = this.road[idx]; aSp2[idx * 3 + 2] = dirtPatch;
     }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     g.setAttribute('aSplat', new THREE.BufferAttribute(splat, 3));
     g.setAttribute('aRock', new THREE.BufferAttribute(rockA, 4));
+    g.setAttribute('aG', new THREE.BufferAttribute(aG, 3));
+    g.setAttribute('aD', new THREE.BufferAttribute(aD, 3));
+    g.setAttribute('aSn', new THREE.BufferAttribute(aSn, 3));
+    g.setAttribute('aBio', new THREE.BufferAttribute(aBio, 3));
+    g.setAttribute('aSp2', new THREE.BufferAttribute(aSp2, 3));
     g.computeBoundingSphere();
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
     const detail = terrainDetail();
     const layers = terrainLayers();
+    const GT = groundTextures();
+    this.terrTime = { value: 0 };
     mat.onBeforeCompile = (sh) => {
       sh.uniforms.tDetail = { value: detail };
       sh.uniforms.tLayers = { value: layers };
+      sh.uniforms.uTime = this.terrTime;
+      for (const [k, u] of [['grass', 'G'], ['dirt', 'D'], ['rock', 'R'], ['sand', 'S'], ['gravel', 'V']]) {
+        sh.uniforms['t' + u] = { value: GT[k] };
+        sh.uniforms['m' + u] = { value: GT[k].userData.mean };
+      }
       sh.vertexShader = sh.vertexShader
-        .replace('#include <common>', '#include <common>\nattribute vec3 aSplat;\nattribute vec4 aRock;\nvarying vec3 vWPos;\nvarying vec3 vSplat;\nvarying vec3 vWNrm;\nvarying vec4 vRock;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWPos = (modelMatrix * vec4(position,1.0)).xyz;\nvSplat = aSplat;\nvWNrm = normal;\nvRock = aRock;');
+        .replace('#include <common>', '#include <common>\nattribute vec3 aSplat;\nattribute vec4 aRock;\nattribute vec3 aG; attribute vec3 aD; attribute vec3 aSn; attribute vec3 aBio; attribute vec3 aSp2;\nvarying vec3 vWPos;\nvarying vec3 vSplat;\nvarying vec3 vWNrm;\nvarying vec4 vRock;\nvarying vec3 vG; varying vec3 vD; varying vec3 vSn; varying vec3 vBio; varying vec3 vSp2;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWPos = (modelMatrix * vec4(position,1.0)).xyz;\nvSplat = aSplat;\nvWNrm = normal;\nvRock = aRock;\nvG = aG; vD = aD; vSn = aSn; vBio = aBio; vSp2 = aSp2;');
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
           varying vec3 vWPos; varying vec3 vSplat; varying vec3 vWNrm; varying vec4 vRock;
-          uniform sampler2D tDetail; uniform sampler2D tLayers;
-          float gTerrH; float gRock; float gSnow; float gMacroH;
+          varying vec3 vG; varying vec3 vD; varying vec3 vSn; varying vec3 vBio; varying vec3 vSp2;
+          uniform sampler2D tDetail; uniform sampler2D tLayers; uniform float uTime;
+          uniform sampler2D tG; uniform sampler2D tD; uniform sampler2D tR; uniform sampler2D tS; uniform sampler2D tV;
+          uniform vec3 mG; uniform vec3 mD; uniform vec3 mR; uniform vec3 mS; uniform vec3 mV;
+          float gTerrH; float gRock; float gSnow; float gMacroH; float gRough; float gWet; float gAnti;
+          // два масштаба с поворотом — повторы текстуры не видны
+          vec4 ts(sampler2D t, vec2 p, float s) {
+            vec4 a = texture2D(t, p * s);
+            vec4 b = texture2D(t, mat2(0.8, -0.6, 0.6, 0.8) * p * (s * 0.41) + 0.37);
+            return mix(a, b, gAnti);
+          }
           // рельеф по высоте (bump) без отдельной карты нормалей
           vec3 terrPerturb(vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDirection) {
             vec3 sx = dFdx(surf_pos), sy = dFdy(surf_pos);
@@ -207,55 +238,106 @@ export class Terrain {
         .replace('#include <color_fragment>', `#include <color_fragment>
           vec4 d1 = texture2D(tDetail, vWPos.xz * 0.09);
           vec4 d2 = texture2D(tDetail, vWPos.xz * 0.012);
-          float macro = mix(0.82, 1.14, d2.g) * mix(0.9, 1.1, d1.r);
-          // слои: дёрн, скала (трипланарно), земля
-          float hg = texture2D(tLayers, vWPos.xz * 0.21).r;
-          vec3 an = abs(normalize(vWNrm)); an /= (an.x + an.y + an.z);
-          float hr = texture2D(tLayers, vWPos.xz * 0.07).g * an.y + texture2D(tLayers, vWPos.zy * 0.07).g * an.x + texture2D(tLayers, vWPos.xy * 0.07).g * an.z;
-          float hr2 = texture2D(tLayers, vWPos.xz * 0.33).g * an.y + texture2D(tLayers, vWPos.zy * 0.33).g * an.x + texture2D(tLayers, vWPos.xy * 0.33).g * an.z;
-          hr = hr * 0.62 + hr2 * 0.38;
-          float hd = texture2D(tLayers, vWPos.xz * 0.16).b;
-          vec3 w = vSplat / max(0.001, vSplat.x + vSplat.y + vSplat.z);
-          // скала по крутизне склона — попиксельно, с рваной границей по фактуре
+          float macro = mix(0.84, 1.12, d2.g) * mix(0.93, 1.07, d1.r);
+          float distV = length(vViewPosition);
+          float farK = smoothstep(110.0, 300.0, distV);
+          gAnti = smoothstep(0.25, 0.75, d2.b) * 0.7 + 0.15;
+          vec3 an = abs(normalize(vWNrm)); an = pow(an, vec3(3.0)); an /= (an.x + an.y + an.z);
           vec3 nW = normalize(vWNrm);
           float slope = 1.0 - nW.y;
-          float altR = smoothstep(30.0, 65.0, vWPos.y);
-          float rk = smoothstep(0.23 - altR * 0.1, 0.37 - altR * 0.1, slope + (hr - 0.5) * 0.14 + (d2.g - 0.5) * 0.07);
-          rk = max(rk, w.y * 0.6);
-          // крупная фактура скал, видимая издалека
+          vec2 wp = vWPos.xz;
+          // ---- слои: цвет текстуры, нормированный на её средний, × цвет биома ----
+          vec4 tg = ts(tG, wp, 0.62);
+          vec4 td = ts(tD, wp, 0.42);
+          vec4 tsd = ts(tS, wp, 0.38);
+          vec4 tv = ts(tV, wp, 0.55);
+          vec4 tr = texture2D(tR, vWPos.zy * 0.2) * an.x + texture2D(tR, vWPos.xz * 0.2) * an.y + texture2D(tR, vWPos.xy * 0.2) * an.z;
+          vec4 tr2 = texture2D(tR, vWPos.zy * 0.055 + 0.3) * an.x + texture2D(tR, vWPos.xz * 0.055 + 0.3) * an.y + texture2D(tR, vWPos.xy * 0.055 + 0.3) * an.z;
+          tr = mix(tr, tr2, 0.4);
           float hm = texture2D(tLayers, vWPos.xz * 0.011).g * an.y + texture2D(tLayers, vWPos.zy * 0.011).g * an.x + texture2D(tLayers, vWPos.xy * 0.011).g * an.z;
           gMacroH = hm;
-          // пласты породы: полосы по высоте с изгибами
+          float volc = vBio.x, swamp = vBio.y, snowB = vBio.z;
+          vec3 cG = vG * clamp(tg.rgb / mG, 0.0, 2.6);
+          cG = mix(cG, vec3(dot(cG, vec3(0.3, 0.59, 0.11))), 0.12);
+          vec3 cD = mix(vD, vD * vec3(0.55, 0.52, 0.5), volc) * clamp(td.rgb / mD, 0.0, 2.6);
+          vec3 cS = vSn * clamp(tsd.rgb / mS, 0.0, 2.2);
+          vec3 cV = mix(vec3(0.13, 0.115, 0.095), vec3(0.06, 0.055, 0.05), volc) * clamp(tv.rgb / mV, 0.0, 2.6);
+          // скала: пласты с изгибами, крупные пятна
           float warp = (d2.r - 0.5) * 5.0 + (hm - 0.5) * 4.0 + sin(vWPos.x * 0.021 + vWPos.z * 0.017) * 1.6;
           float st1 = sin(vWPos.y * 1.15 + warp + vWPos.x * 0.03);
           float st2 = sin(vWPos.y * 4.3 + warp * 2.0 - vWPos.z * 0.05);
-          float strata = 1.0 + (smoothstep(-0.5, 0.5, st1) - 0.5) * 0.13 + st2 * 0.04;
-          vec3 rockCol = vRock.rgb * strata * mix(0.5, 1.3, hr) * mix(0.78, 1.18, hm);
-          rockCol = mix(rockCol, vec3(dot(rockCol, vec3(0.33))) * vec3(0.96, 0.98, 1.02), 0.3);
-          // трещины и ниши темнее
-          rockCol *= mix(0.62, 1.0, smoothstep(0.1, 0.4, hr * 0.6 + hm * 0.6));
-          w = mix(w, vec3(0.0, 1.0, 0.0), rk);
-          gTerrH = hg * w.x + hr * w.y + hd * w.z;
-          float shade = mix(0.72, 1.18, hg) * vSplat.x + mix(0.68, 1.22, hd) * vSplat.z + vSplat.y;
-          diffuseColor.rgb *= shade * macro;
-          diffuseColor.rgb = mix(diffuseColor.rgb, rockCol, rk);
-          // снег на высоких пологих местах, рваная кромка
+          float strata = 1.0 + (smoothstep(-0.5, 0.5, st1) - 0.5) * 0.14 + st2 * 0.04;
+          vec3 cR = vRock.rgb * clamp(tr.rgb / mR, 0.0, 2.6) * strata * mix(0.8, 1.16, hm);
+          // базальт в пепельных землях: без светлых пятен лишайника
+          cR = mix(cR, vRock.rgb * mix(0.6, 1.25, tr.a) * strata, volc * 0.75);
+          // скала по крутизне — попиксельно, с рваной границей
+          float altR = smoothstep(30.0, 65.0, vWPos.y);
+          float rk = smoothstep(0.23 - altR * 0.1, 0.37 - altR * 0.1, slope + (tr.a - 0.5) * 0.16 + (d2.g - 0.5) * 0.07);
+          rk = max(rk, vSplat.y * 0.6);
+          // доли слоёв (вулкан — пепел вместо дёрна; снежный биом — снег сверху)
+          float wG = vSplat.x * (1.0 - volc) * (1.0 - snowB);
+          float wD = vSplat.z * (1.0 - vSp2.y) + vSplat.x * volc + smoothstep(0.6, 0.78, d2.r + d1.g * 0.15) * 0.35 * (1.0 - volc) + swamp * 0.25;
+          float wS = vSp2.x, wV = vSp2.y;
+          float wR = rk;
+          wG *= 1.0 - rk; wD *= 1.0 - rk; wS *= 1.0 - rk * 0.7;
+          // смешение по высоте фактуры: камешки торчат из земли, трава заполняет низины
+          float aG2 = wG + tg.a * 0.55, aD2 = wD + td.a * 0.55, aS2 = wS + tsd.a * 0.4, aV2 = wV + tv.a * 0.55, aR2 = wR + tr.a * 0.7;
+          float mx = max(max(max(aG2, aD2), max(aS2, aV2)), aR2) - 0.28;
+          float bG = max(aG2 - mx, 0.0) * step(0.001, wG), bD = max(aD2 - mx, 0.0) * step(0.001, wD), bS = max(aS2 - mx, 0.0) * step(0.001, wS);
+          float bV = max(aV2 - mx, 0.0) * step(0.001, wV), bR = max(aR2 - mx, 0.0) * step(0.001, wR);
+          float bs = bG + bD + bS + bV + bR + 1e-4;
+          bG /= bs; bD /= bs; bS /= bs; bV /= bs; bR /= bs;
+          vec3 near = cG * bG + cD * bD + cS * bS + cV * bV + cR * bR;
+          near *= macro;
+          gTerrH = tg.a * 0.45 * bG + td.a * 0.85 * bD + tsd.a * 0.5 * bS + tv.a * 1.0 * bV + tr.a * 1.5 * bR;
+          gRough = 0.95 * bG + 0.93 * bD + 0.9 * bS + 0.88 * bV + mix(0.8, 0.62, tr.a) * bR;
+          // вдали — прежний усреднённый цвет (без ряби мелких текстур)
+          vec3 far = diffuseColor.rgb * mix(0.82, 1.14, d2.g) * mix(0.9, 1.1, d1.r);
+          vec3 farRock = vRock.rgb * strata * mix(0.78, 1.18, hm);
+          far = mix(far, farRock, rk);
+          diffuseColor.rgb = mix(near, far, farK);
+          gRock = rk;
+          // мокрый берег: темнее и с бликом; на дне — каустика
+          float wet = smoothstep(0.9, 0.06, vWPos.y) * (1.0 - volc);
+          diffuseColor.rgb *= mix(1.0, 0.58, wet);
+          if (vWPos.y < 0.0) {
+            float dep = -vWPos.y;
+            float c1 = texture2D(tDetail, wp * 0.11 + vec2(uTime * 0.021, uTime * 0.013)).b;
+            float c2 = texture2D(tDetail, wp * 0.13 - vec2(uTime * 0.017, -uTime * 0.019)).b;
+            float caus = smoothstep(0.06, 0.0, abs(c1 - c2)) * smoothstep(5.0, 0.3, dep) * (1.0 - swamp) * (1.0 - volc);
+            diffuseColor.rgb = diffuseColor.rgb * mix(1.0, 0.55, smoothstep(0.0, 4.0, dep) * (1.0 - volc)) * mix(vec3(0.85, 0.95, 0.95), vec3(1.0), volc) + vec3(0.5, 0.6, 0.55) * caus * 0.35;
+          }
+          gWet = wet;
+          // снег: на высоких пологих местах и в снежном биоме; рваная кромка, рябь от ветра, искры
           float allowS = smoothstep(0.0, 0.5, vRock.a), swB = clamp(vRock.a * 2.0 - 1.0, 0.0, 1.0);
           float sLine = mix(64.0, 36.0, swB);
-          float sn = smoothstep(sLine, sLine + 16.0, vWPos.y + (d2.g - 0.5) * 16.0 + (hm - 0.5) * 8.0) * smoothstep(0.72, 0.86, nW.y + (hr - 0.5) * 0.25) * allowS;
-          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.9, 0.96) * mix(0.9, 1.05, d1.r), sn);
-          gRock = rk * (1.0 - sn); gSnow = sn;`)
+          float sn = smoothstep(sLine, sLine + 16.0, vWPos.y + (d2.g - 0.5) * 16.0 + (hm - 0.5) * 8.0) * smoothstep(0.72, 0.86, nW.y + (tr.a - 0.5) * 0.25) * allowS;
+          sn = max(sn, snowB * (1.0 - rk) * smoothstep(0.6, 0.85, nW.y + (d1.g - 0.5) * 0.2));
+          float rip = sin(dot(wp, vec2(0.9, 0.45)) * 2.6 + (d1.r - 0.5) * 6.0) * 0.5 + 0.5;
+          vec3 snowC = vec3(0.67, 0.71, 0.79) * mix(0.86, 1.05, d1.r) * mix(0.93, 1.03, rip);
+          diffuseColor.rgb = mix(diffuseColor.rgb, snowC, sn);
+          gTerrH = mix(gTerrH, rip * 0.35 + d1.g * 0.2, sn);
+          gRough = mix(gRough, 0.55, sn);
+          gSnow = sn; gRock = rk * (1.0 - sn);`)
         .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
           {
             float dist = length(vViewPosition);
             float fade = 1.0 - smoothstep(25.0, 90.0, dist);
-            vec2 dH = vec2(dFdx(gTerrH), dFdy(gTerrH)) * (1.2 + gRock * 2.6) * fade * (1.0 - gSnow * 0.7);
+            vec2 dH = vec2(dFdx(gTerrH), dFdy(gTerrH)) * (1.2 + gRock * 2.6) * fade * (1.0 + gSnow * 1.4);
             // крупный рельеф скал не пропадает вдали
             dH += vec2(dFdx(gMacroH), dFdy(gMacroH)) * gRock * 9.0 * (1.0 - smoothstep(350.0, 700.0, dist));
             if (dot(dH, dH) > 1e-10) normal = terrPerturb(-vViewPosition, normal, dH, faceDirection);
           }`)
         .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-          roughnessFactor = mix(mix(0.95, 0.78, gRock * gTerrH), 0.55, gSnow);`);
+          roughnessFactor = mix(gRough, 0.28, gWet * 0.8);`)
+        .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+          // искры на снегу: отдельные кристаллы вспыхивают под взглядом
+          if (gSnow > 0.3) {
+            vec3 q = floor(vWPos * 38.0);
+            float hh = fract(sin(dot(q, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+            float tw = step(0.9965, hh) * gSnow * (1.0 - smoothstep(10.0, 40.0, length(vViewPosition)));
+            reflectedLight.directSpecular += vec3(1.6) * tw;
+          }`);
     };
     this.mesh = new THREE.Mesh(g, mat);
     this.mesh.receiveShadow = true;
@@ -268,6 +350,7 @@ export class Terrain {
     const nb = BIOME_LIST.length;
     const map = new Int32Array(V * V).fill(-1);
     const pos = [], depth = [], swamp = [], idx = [];
+    const wset = new Set(); this.waterSpots = [];
     const vert = (i, j) => {
       const k = j * V + i;
       if (map[k] >= 0) return map[k];
@@ -284,6 +367,10 @@ export class Terrain {
       if (this.isLava(-WORLD_HALF + (i + 0.5) * CELL, -WORLD_HALF + (j + 0.5) * CELL)) continue;
       const v00 = vert(i, j), v10 = vert(i + 1, j), v01 = vert(i, j + 1), v11 = vert(i + 1, j + 1);
       idx.push(v00, v01, v10, v10, v01, v11);
+      // грубая сетка участков воды — чтобы считать отражение только рядом с водой
+      const wx = -WORLD_HALF + i * CELL, wz = -WORLD_HALF + j * CELL;
+      const wk = Math.floor(wx / 48) * 4096 + Math.floor(wz / 48);
+      if (!wset.has(wk)) { wset.add(wk); this.waterSpots.push([Math.floor(wx / 48) * 48 + 24, Math.floor(wz / 48) * 48 + 24]); }
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -297,6 +384,8 @@ export class Terrain {
       uSunDir: { value: new THREE.Vector3(0.4, 0.8, 0.3) }, uSunColor: { value: new THREE.Color('#fff2dc') },
       uZenith: { value: new THREE.Color('#3a78c8') }, uHorizon: { value: new THREE.Color('#b9cbe0') },
       uLight: { value: 1 },
+      // зеркальное отражение окружения (рендерится в World.renderReflection)
+      tReflect: { value: null }, uReflMat: { value: new THREE.Matrix4() }, uReflOn: { value: 0 },
     };
     const mat = new THREE.ShaderMaterial({
       uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {}]),
@@ -324,6 +413,7 @@ export class Terrain {
       fragmentShader: `
         uniform float uTime; uniform sampler2D uNormal;
         uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uZenith; uniform vec3 uHorizon; uniform float uLight;
+        uniform sampler2D tReflect; uniform mat4 uReflMat; uniform float uReflOn;
         varying vec3 vW; varying float vDepth; varying float vSwamp; varying vec2 vWaveN;
         #include <fog_pars_fragment>
         vec3 nmap(vec2 uv){ return texture2D(uNormal, uv).xyz * 2.0 - 1.0; }
@@ -338,10 +428,17 @@ export class Terrain {
           float fres = 0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
           vec3 R = reflect(-V, N);
           vec3 sky = mix(uHorizon, uZenith, clamp(R.y * 1.6, 0.0, 1.0));
+          if (uReflOn > 0.5) {
+            // отражение гор, деревьев и неба; рябь искажает картинку
+            vec4 rc = uReflMat * vec4(vW.x, 0.0, vW.z, 1.0);
+            vec2 ruv = rc.xy / rc.w + (N.xz * 0.22 + ripple * 0.02) * (1.0 - vSwamp * 0.5);
+            vec3 rr = texture2D(tReflect, clamp(ruv, vec2(0.002), vec2(0.998))).rgb;
+            sky = mix(sky, rr / (1.0 + max(max(rr.r, rr.g), rr.b) * 0.15), smoothstep(0.0, 0.04, ruv.y) * uReflOn * 0.92);
+          }
           float sd = max(dot(R, normalize(uSunDir)), 0.0);
           vec3 spec = min(uSunColor * (pow(sd, 600.0) * 1.4 + pow(sd, 80.0) * 0.25) * (1.0 - vSwamp * 0.75), vec3(1.6));
-          vec3 shallow = mix(vec3(0.10, 0.42, 0.42), vec3(0.20, 0.24, 0.10), vSwamp);
-          vec3 deep = mix(vec3(0.02, 0.10, 0.18), vec3(0.05, 0.07, 0.03), vSwamp);
+          vec3 shallow = mix(vec3(0.07, 0.25, 0.22), vec3(0.16, 0.19, 0.08), vSwamp);
+          vec3 deep = mix(vec3(0.012, 0.05, 0.07), vec3(0.04, 0.055, 0.025), vSwamp);
           float dk = smoothstep(0.0, 5.0, vDepth);
           vec3 body = mix(shallow, deep, dk) * uLight;
           // свет, рассеянный в толще воды на гребнях
@@ -351,7 +448,7 @@ export class Terrain {
           float foamN = texture2D(uNormal, vW.xz * 0.2 + vec2(uTime * 0.02)).x;
           float shore = smoothstep(0.7, 0.0, vDepth) * smoothstep(0.35, 0.65, foamN + 0.25 * sin(uTime * 1.5 + vDepth * 9.0));
           col = mix(col, vec3(0.9, 0.95, 0.95) * uLight, shore * 0.75 * (1.0 - vSwamp));
-          float alpha = mix(0.25, 0.94, smoothstep(0.0, 2.2, vDepth));
+          float alpha = mix(0.12, 0.95, smoothstep(0.0, 2.6, vDepth));
           alpha = max(alpha, fres * 0.9);
           alpha = max(alpha, shore * 0.8);
           gl_FragColor = vec4(col, alpha);
@@ -386,7 +483,7 @@ export class Terrain {
     });
     this.lava = new THREE.Group();
     for (const L of LAVA_POOLS) {
-      const m = new THREE.Mesh(new THREE.CircleGeometry(L.r * 1.25, 48), this.lavaMat);
+      const m = new THREE.Mesh(new THREE.CircleGeometry(L.r * 2.2, 64), this.lavaMat);   // берег неровный — лишнее закрывает рельеф
       m.rotation.x = -Math.PI / 2;
       m.position.set(L.x, 0.25, L.z);
       this.lava.add(m);
@@ -395,11 +492,12 @@ export class Terrain {
 
   isLava(x, z) {
     if (this.getHeight(x, z) > 0.25) return false;
-    for (const L of LAVA_POOLS) if (Math.hypot(x - L.x, z - L.z) < L.r * 1.25) return true;
+    for (const L of LAVA_POOLS) if (Math.hypot(x - L.x, z - L.z) < L.r * 2.2) return true;
     return false;
   }
 
   update(dt, t) {
+    if (this.terrTime) this.terrTime.value = t;
     this.lavaMat.uniforms.uTime.value = t;
     this.waterUniforms.uTime.value = t;
   }
